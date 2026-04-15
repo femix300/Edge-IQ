@@ -1,0 +1,20 @@
+{
+  "name": "edge-iq",
+  "version": "1.0.0",
+  "description": "**Build With AI OAU 2026 · GDG × Bayse Markets · Quantitative Finance Track**",
+  "homepage": "https://github.com/femix300/Edge-IQ#readme",
+  "bugs": {
+    "url": "https://github.com/femix300/Edge-IQ/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/femix300/Edge-IQ.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
