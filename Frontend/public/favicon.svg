@@ -1,0 +1,37 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a4db8" />
+      <stop offset="100%" stop-color="#080d1a" />
+    </linearGradient>
+    
+    <!-- Bolt Gradient (Teal to Gold) -->
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#b3c5ff" />
+      <stop offset="50%" stop-color="#7cd9ac" />
+      <stop offset="100%" stop-color="#f0a500" />
+    </linearGradient>
+
+    <!-- Subtle Glow Effect -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Base App Shape -->
+  <rect width="120" height="120" rx="32" fill="url(#bgGrad)" stroke="#434653" stroke-width="2" />
+  
+  <!-- Abstract Data Grid / Crosshair background -->
+  <line x1="60" y1="20" x2="60" y2="100" stroke="#b3c5ff" stroke-width="1" opacity="0.2" stroke-dasharray="2,2"/>
+  <line x1="20" y1="60" x2="100" y2="60" stroke="#b3c5ff" stroke-width="1" opacity="0.2" stroke-dasharray="2,2"/>
+
+  <!-- Centered Lightning Bolt -->
+  <path d="M 68 25 L 35 65 L 58 65 L 52 95 L 85 55 L 62 55 Z" 
+        fill="url(#boltGrad)" 
+        filter="url(#glow)" />
+</svg>
