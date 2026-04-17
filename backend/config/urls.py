@@ -22,7 +22,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
 
     # API routes
-    path('api/markets/', include('markets.url')),
+    path('api/markets/', include('markets.urls')),
     path('api/signals/', include('signals.urls')),
     path('api/portfolio/', include('portfolio.urls')),
     path('api/backtest/', include('backtesting.urls')),
