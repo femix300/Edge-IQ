@@ -1,0 +1,437 @@
+"""
+Agent 02: Quantitative Analysis Agent
+Calculates momentum, volume, and order book metrics
+"""
+from services.bayse_client import bayse_client, BayseAPIError
+from markets.models import Market, QuantMetrics, PriceHistory
+from utils.calculations import (
+    calculate_momentum,
+    get_momentum_direction,
+    calculate_volume_acceleration,
+    get_volume_trend,
+    calculate_bid_ask_spread,
+    get_order_book_bias
+)
+from decimal import Decimal
+from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def analyze_market(market_id):
+    """
+    Perform complete quantitative analysis on a market
+    
+    Args:
+        market_id: Database ID of the Market object
+        
+    Returns:
+        Dictionary with all quant metrics
+    """
+    try:
+        # Get market from database
+        market = Market.objects.get(id=market_id)
+        logger.info(f"Analyzing market: {market.title}")
+        
+        # Fetch all required data from Bayse
+        price_history = fetch_price_history(market)
+        ticker_data = fetch_ticker_data(market)
+        order_book_data = fetch_order_book(market)
+        
+        # Calculate momentum metrics
+        momentum_metrics = calculate_momentum_metrics(price_history)
+        
+        # Calculate volume metrics
+        volume_metrics = calculate_volume_metrics(price_history, ticker_data)
+        
+        # Calculate order book metrics
+        order_book_metrics = calculate_order_book_metrics(order_book_data)
+        
+        # Combine all metrics
+        quant_metrics = {
+            **momentum_metrics,
+            **volume_metrics,
+            **order_book_metrics,
+        }
+        
+        # Store metrics in database
+        save_quant_metrics(market, quant_metrics)
+        
+        logger.info(f"Analysis complete for {market.title}")
+        logger.info(f"  Momentum: {quant_metrics['momentum_score']} ({quant_metrics['momentum_direction']})")
+        logger.info(f"  Volume Acceleration: {quant_metrics['volume_acceleration']}")
+        logger.info(f"  Order Book Bias: {quant_metrics['order_book_bias']}")
+        
+        return quant_metrics
+        
+    except Market.DoesNotExist:
+        logger.error(f"Market with ID {market_id} not found")
+        raise ValueError(f"Market {market_id} not found")
+    except Exception as e:
+        logger.error(f"Error analyzing market {market_id}: {str(e)}")
+        raise
+
+
+def fetch_price_history(market, hours=24, interval='1h'):
+    """
+    Fetch and store price history from Bayse
+    
+    Args:
+        market: Market object
+        hours: Number of hours of history
+        interval: Time interval
+        
+    Returns:
+        List of price history data
+    """
+    try:
+        # Calculate limit based on hours and interval
+        interval_minutes = {
+            '1m': 1,
+            '5m': 5,
+            '15m': 15,
+            '1h': 60,
+            '4h': 240,
+            '1d': 1440,
+        }
+        
+        minutes = interval_minutes.get(interval, 60)
+        limit = int((hours * 60) / minutes)
+        
+        # Fetch from Bayse API
+        history_data = bayse_client.get_price_history(
+            event_id=market.bayse_event_id,
+            market_id=market.bayse_market_id,
+            interval=interval,
+            limit=min(limit, 100)  # Cap at 100 to avoid huge requests
+        )
+        
+        if not history_data:
+            logger.warning(f"No price history returned for {market.title}")
+            return []
+        
+        # Handle different response structures
+        history = history_data if isinstance(history_data, list) else history_data.get('data', [])
+        
+        # Store in database for future use
+        for point in history:
+            try:
+                timestamp = parse_timestamp(point.get('timestamp'))
+                if not timestamp:
+                    continue
+                
+                PriceHistory.objects.update_or_create(
+                    market=market,
+                    timestamp=timestamp,
+                    defaults={
+                        'price': Decimal(str(point.get('price', 0))),
+                        'volume': Decimal(str(point.get('volume', 0))),
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error storing price point: {str(e)}")
+                continue
+        
+        return history
+        
+    except BayseAPIError as e:
+        logger.error(f"Bayse API error fetching price history: {str(e)}")
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching price history: {str(e)}")
+        return []
+
+
+def fetch_ticker_data(market):
+    """
+    Fetch current ticker data from Bayse
+    
+    Args:
+        market: Market object
+        
+    Returns:
+        Ticker data dictionary
+    """
+    try:
+        if not market.bayse_market_id:
+            logger.warning(f"No market ID for {market.title}")
+            return {}
+        
+        ticker = bayse_client.get_ticker(market.bayse_market_id)
+        
+        # Update market with latest price
+        if ticker:
+            market.current_price = Decimal(str(ticker.get('price', market.current_price)))
+            market.volume_24h = Decimal(str(ticker.get('volume_24h', market.volume_24h)))
+            market.save()
+        
+        return ticker or {}
+        
+    except BayseAPIError as e:
+        logger.error(f"Bayse API error fetching ticker: {str(e)}")
+        return {}
+    except Exception as e:
+        logger.error(f"Error fetching ticker: {str(e)}")
+        return {}
+
+
+def fetch_order_book(market, depth=20):
+    """
+    Fetch order book data from Bayse
+    
+    Args:
+        market: Market object
+        depth: Number of price levels
+        
+    Returns:
+        Order book data dictionary
+    """
+    try:
+        order_book = bayse_client.get_order_book(
+            event_id=market.bayse_event_id,
+            market_id=market.bayse_market_id,
+            depth=depth
+        )
+        
+        return order_book or {}
+        
+    except BayseAPIError as e:
+        logger.error(f"Bayse API error fetching order book: {str(e)}")
+        return {}
+    except Exception as e:
+        logger.error(f"Error fetching order book: {str(e)}")
+        return {}
+
+
+def calculate_momentum_metrics(price_history):
+    """
+    Calculate momentum metrics from price history
+    
+    Args:
+        price_history: List of price data points
+        
+    Returns:
+        Dictionary with momentum metrics
+    """
+    if not price_history:
+        return {
+            'momentum_score': 0,
+            'momentum_direction': 'neutral',
+            'price_change_1h': 0,
+            'price_change_6h': 0,
+            'price_change_24h': 0,
+        }
+    
+    try:
+        # Extract prices (last 24 points for momentum calculation)
+        prices = [float(point.get('price', 0)) for point in price_history[-24:]]
+        
+        # Calculate momentum score
+        momentum_score = calculate_momentum(prices, normalize=True)
+        momentum_direction = get_momentum_direction(momentum_score)
+        
+        # Calculate price changes at different intervals
+        current_price = prices[-1] if prices else 0
+        
+        price_change_1h = calculate_price_change(prices, -1, current_price)
+        price_change_6h = calculate_price_change(prices, -6, current_price)
+        price_change_24h = calculate_price_change(prices, -24, current_price)
+        
+        return {
+            'momentum_score': momentum_score,
+            'momentum_direction': momentum_direction,
+            'price_change_1h': price_change_1h,
+            'price_change_6h': price_change_6h,
+            'price_change_24h': price_change_24h,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating momentum metrics: {str(e)}")
+        return {
+            'momentum_score': 0,
+            'momentum_direction': 'neutral',
+            'price_change_1h': 0,
+            'price_change_6h': 0,
+            'price_change_24h': 0,
+        }
+
+
+def calculate_price_change(prices, lookback_index, current_price):
+    """
+    Calculate price change from a lookback point
+    
+    Args:
+        prices: List of prices
+        lookback_index: Index to look back to (negative)
+        current_price: Current price
+        
+    Returns:
+        Price change as decimal
+    """
+    try:
+        if len(prices) < abs(lookback_index):
+            return 0
+        
+        old_price = prices[lookback_index]
+        if old_price == 0:
+            return 0
+        
+        change = ((current_price - old_price) / old_price)
+        return round(change, 6)
+        
+    except Exception as e:
+        logger.error(f"Error calculating price change: {str(e)}")
+        return 0
+
+
+def calculate_volume_metrics(price_history, ticker_data):
+    """
+    Calculate volume metrics
+    
+    Args:
+        price_history: List of price data points
+        ticker_data: Current ticker data
+        
+    Returns:
+        Dictionary with volume metrics
+    """
+    if not price_history:
+        return {
+            'volume_acceleration': 1.0,
+            'volume_trend': 'stable',
+        }
+    
+    try:
+        # Calculate volume acceleration (last 3h vs previous 3h)
+        volumes = [float(point.get('volume', 0)) for point in price_history]
+        
+        if len(volumes) >= 6:
+            recent_volume = sum(volumes[-3:])  # Last 3 hours
+            previous_volume = sum(volumes[-6:-3])  # Previous 3 hours
+        else:
+            recent_volume = sum(volumes)
+            previous_volume = recent_volume
+        
+        volume_acceleration = calculate_volume_acceleration(recent_volume, previous_volume)
+        volume_trend = get_volume_trend(volume_acceleration)
+        
+        return {
+            'volume_acceleration': volume_acceleration,
+            'volume_trend': volume_trend,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating volume metrics: {str(e)}")
+        return {
+            'volume_acceleration': 1.0,
+            'volume_trend': 'stable',
+        }
+
+
+def calculate_order_book_metrics(order_book_data):
+    """
+    Calculate order book metrics
+    
+    Args:
+        order_book_data: Order book data from Bayse
+        
+    Returns:
+        Dictionary with order book metrics
+    """
+    if not order_book_data:
+        return {
+            'bid_ask_spread': 0,
+            'order_book_bias': 'neutral',
+            'bid_depth': 0,
+            'ask_depth': 0,
+        }
+    
+    try:
+        bids = order_book_data.get('bids', [])
+        asks = order_book_data.get('asks', [])
+        
+        # Calculate best bid and ask
+        best_bid = float(bids[0]['price']) if bids else 0
+        best_ask = float(asks[0]['price']) if asks else 0
+        
+        # Calculate spread
+        spread = calculate_bid_ask_spread(best_bid, best_ask)
+        
+        # Calculate total depth on each side
+        bid_depth = sum(float(bid.get('size', 0)) for bid in bids)
+        ask_depth = sum(float(ask.get('size', 0)) for ask in asks)
+        
+        # Determine order book bias
+        order_book_bias = get_order_book_bias(bid_depth, ask_depth)
+        
+        return {
+            'bid_ask_spread': spread,
+            'order_book_bias': order_book_bias,
+            'bid_depth': Decimal(str(bid_depth)),
+            'ask_depth': Decimal(str(ask_depth)),
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating order book metrics: {str(e)}")
+        return {
+            'bid_ask_spread': 0,
+            'order_book_bias': 'neutral',
+            'bid_depth': 0,
+            'ask_depth': 0,
+        }
+
+
+def save_quant_metrics(market, metrics):
+    """
+    Save quant metrics to database
+    
+    Args:
+        market: Market object
+        metrics: Dictionary of calculated metrics
+    """
+    try:
+        QuantMetrics.objects.create(
+            market=market,
+            momentum_score=Decimal(str(metrics['momentum_score'])),
+            momentum_direction=metrics['momentum_direction'],
+            price_change_1h=Decimal(str(metrics['price_change_1h'])),
+            price_change_6h=Decimal(str(metrics['price_change_6h'])),
+            price_change_24h=Decimal(str(metrics['price_change_24h'])),
+            volume_acceleration=Decimal(str(metrics['volume_acceleration'])),
+            volume_trend=metrics['volume_trend'],
+            bid_ask_spread=Decimal(str(metrics['bid_ask_spread'])),
+            order_book_bias=metrics['order_book_bias'],
+            bid_depth=metrics.get('bid_depth', 0),
+            ask_depth=metrics.get('ask_depth', 0),
+        )
+        logger.info(f"Saved quant metrics for {market.title}")
+    except Exception as e:
+        logger.error(f"Error saving quant metrics: {str(e)}")
+
+
+def get_latest_quant_metrics(market):
+    """
+    Get the most recent quant metrics for a market
+    
+    Args:
+        market: Market object
+        
+    Returns:
+        QuantMetrics object or None
+    """
+    try:
+        return market.quant_metrics.latest()
+    except QuantMetrics.DoesNotExist:
+        return None
+
+
+def parse_timestamp(timestamp_str):
+    """Parse timestamp string to datetime"""
+    if not timestamp_str:
+        return None
+    try:
+        from dateutil import parser
+        return parser.parse(timestamp_str)
+    except Exception:
+        return None
