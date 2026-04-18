@@ -42,7 +42,7 @@ INSTALLED_APPS = [
     # Third party
     'rest_framework',
     'corsheaders',
-    'django_celery_beat'
+    'django_celery_beat',
 
     # Local apps
     'markets',
@@ -147,11 +147,12 @@ REST_FRAMEWORK = {
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:5173', cast=Csv)
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:5173', cast=Csv())
 CORS_ALLOW_CREDENTIALS = True
 
 # Celery Configuration
-CELERY_ALLOWED_ORIGINS = config('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_ALLOWED_ORIGINS = config(
+    'REDIS_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
