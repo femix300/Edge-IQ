@@ -96,53 +96,44 @@ def analyze_market(market_id):
 def fetch_price_history(market, hours=24, interval='1h'):
     """
     Fetch and store price history from Bayse
-
-    Args:
-        market: Market object
-        hours: Number of hours of history
-        interval: Time interval
-
-    Returns:
-        List of price history data
     """
     try:
-        # Calculate limit based on hours and interval
-        interval_minutes = {
-            '1m': 1,
-            '5m': 5,
-            '15m': 15,
-            '1h': 60,
-            '4h': 240,
-            '1d': 1440,
-        }
-
-        minutes = interval_minutes.get(interval, 60)
-        limit = int((hours * 60) / minutes)
-
-        # Fetch from Bayse API
+        # Map hours to timePeriod
+        if hours <= 12:
+            time_period = '12H'
+        elif hours <= 24:
+            time_period = '24H'
+        elif hours <= 168:
+            time_period = '1W'
+        elif hours <= 720:
+            time_period = '1M'
+        else:
+            time_period = '1Y'
+        
+        # Fetch from Bayse API - PASS THE MARKET ID!
         history_data = bayse_client.get_price_history(
             event_id=market.bayse_event_id,
-            market_id=market.bayse_market_id,
-            interval=interval,
-            limit=min(limit, 100)  # Cap at 100 to avoid huge requests
+            outcome='YES',
+            time_period=time_period,
+            market_id=market.bayse_market_id  # ← ADD THIS
         )
 
         if not history_data:
             logger.warning(f"No price history returned for {market.title}")
             return []
 
-        # Handle different response structures
-        history = history_data if isinstance(
-            history_data, list) else history_data.get('data', [])
-
-        # Store in database for future use
-        for point in history:
+        # Store in database
+        PriceHistory = _get_price_history_model()
+        for point in history_data:
             try:
-                timestamp = parse_timestamp(point.get('timestamp'))
-                if not timestamp:
+                # Convert timestamp (Bayse uses milliseconds)
+                timestamp_ms = point.get('timestamp')
+                if timestamp_ms:
+                    from datetime import datetime
+                    timestamp = datetime.fromtimestamp(timestamp_ms / 1000)
+                else:
                     continue
 
-                PriceHistory = _get_price_history_model()
                 PriceHistory.objects.update_or_create(
                     market=market,
                     timestamp=timestamp,
@@ -155,7 +146,11 @@ def fetch_price_history(market, hours=24, interval='1h'):
                 logger.error(f"Error storing price point: {str(e)}")
                 continue
 
-        return history
+        return history_data
+
+    except Exception as e:
+        logger.error(f"Error fetching price history: {str(e)}")
+        return []
 
     except BayseAPIError as e:
         logger.error(f"Bayse API error fetching price history: {str(e)}")
@@ -168,26 +163,27 @@ def fetch_price_history(market, hours=24, interval='1h'):
 def fetch_ticker_data(market):
     """
     Fetch current ticker data from Bayse
-
-    Args:
-        market: Market object
-
-    Returns:
-        Ticker data dictionary
     """
     try:
         if not market.bayse_market_id:
             logger.warning(f"No market ID for {market.title}")
             return {}
 
-        ticker = bayse_client.get_ticker(market.bayse_market_id)
+        # Add outcome parameter
+        ticker = bayse_client.get_ticker(
+            market_id=market.bayse_market_id,
+            outcome='YES'  # REQUIRED
+        )
 
         # Update market with latest price
         if ticker:
-            market.current_price = Decimal(
-                str(ticker.get('price', market.current_price)))
-            market.volume_24h = Decimal(
-                str(ticker.get('volume_24h', market.volume_24h)))
+            last_price = ticker.get('lastPrice')
+            volume_24h = ticker.get('volume24h')
+            
+            if last_price:
+                market.current_price = Decimal(str(last_price))
+            if volume_24h:
+                market.volume_24h = Decimal(str(volume_24h))
             market.save()
 
         return ticker or {}
@@ -200,31 +196,29 @@ def fetch_ticker_data(market):
         return {}
 
 
-def fetch_order_book(market, depth=20):
+def fetch_order_book(market, depth=10):
     """
     Fetch order book data from Bayse
-
-    Args:
-        market: Market object
-        depth: Number of price levels
-
-    Returns:
-        Order book data dictionary
     """
     try:
+        # Get outcome_id using the fixed method
+        outcome_id = bayse_client.get_outcome_id(market.bayse_event_id, outcome_label='YES')
+        
+        if not outcome_id:
+            logger.debug(f"No outcome_id found for market {market.id}")
+            return {}
+
+        # Get order book
         order_book = bayse_client.get_order_book(
-            event_id=market.bayse_event_id,
-            market_id=market.bayse_market_id,
-            depth=depth
+            outcome_id=outcome_id,
+            depth=depth,
+            currency='USD'
         )
 
         return order_book or {}
 
-    except BayseAPIError as e:
-        logger.error(f"Bayse API error fetching order book: {str(e)}")
-        return {}
     except Exception as e:
-        logger.error(f"Error fetching order book: {str(e)}")
+        logger.debug(f"Error fetching order book: {str(e)}")
         return {}
 
 

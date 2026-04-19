@@ -1,261 +1,162 @@
 """
 Google Gemini API Client
-Handles AI probability estimation
+Using the Two-Step Agent Pipeline for Production-Grade Structured Outputs
 """
-import google.generativeai as genai
+from google import genai
+from google.genai.types import GenerateContentConfig, GoogleSearch
+from pydantic import BaseModel
 from decouple import config
 import json
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Define the exact schema the database requires
+class AIAnalysisSchema(BaseModel):
+    probability: float
+    confidence: float
+    reasoning: str
+    key_factors: list[str]
+    sources_consulted: str
 
 class GeminiClient:
-    """
-    Client for Google Gemini AI
-    """
+    """Client for Google Gemini AI using the two-step architecture"""
     
     def __init__(self):
         self.api_key = config('GEMINI_API_KEY', default='')
+        
         if self.api_key:
-            genai.configure(api_key=self.api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            try:
+                self.client = genai.Client(api_key=self.api_key)
+                logger.info("✅ Gemini client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Gemini client: {str(e)}")
+                self.client = None
         else:
             logger.warning("No Gemini API key configured")
-            self.model = None
-    
+            self.client = None
+            
     def estimate_probability(self, event_title, event_description, market_context=None):
-        """
-        Use Gemini to estimate true probability of an event
-        
-        Args:
-            event_title: Title of the prediction market
-            event_description: Description of the event
-            market_context: Additional context (current price, volume, etc.)
-            
-        Returns:
-            Dictionary with probability, confidence, and reasoning
-        """
-        if not self.model:
-            logger.error("Gemini model not initialized - no API key")
+        """Two-Step Production Pipeline: Research -> Structure"""
+        if not self.client:
+            logger.error("Gemini client not initialized - no API key")
             return self._default_response()
-        
+            
         try:
-            # Build the prompt
-            prompt = self._build_probability_prompt(
-                event_title, 
-                event_description, 
-                market_context
+            logger.info(f"Phase 1: Researching '{event_title[:50]}...'")
+            
+            # ==========================================
+            # STEP 1: THE RESEARCHER (Uses Google Search)
+            # ==========================================
+            research_prompt = self._build_research_prompt(event_title, event_description, market_context)
+            
+            research_config = GenerateContentConfig(
+                temperature=0.3,
+                tools=[GoogleSearch()], # Search is enabled here
             )
             
-            # Configure generation with search grounding
-            generation_config = genai.GenerationConfig(
-                temperature=0.3,  # Lower temperature for more consistent outputs
-                top_p=0.95,
-                top_k=40,
-                max_output_tokens=1000,
+            research_response = self.client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=research_prompt,
+                config=research_config,
             )
             
-            # Generate response with Google Search grounding
-            response = self.model.generate_content(
-                prompt,
-                generation_config=generation_config,
-                tools='google_search_retrieval'  # Enable search grounding
+            logger.info("Phase 2: Formatting output into strict JSON schema")
+            
+            # ==========================================
+            # STEP 2: THE FORMATTER (Uses Strict Schema)
+            # ==========================================
+            format_prompt = f"""
+            Extract the data from the following research report into the required JSON schema.
+            Make sure the reasoning is a single continuous paragraph without line breaks.
+            
+            RESEARCH REPORT:
+            {research_response.text}
+            """
+            
+            format_config = GenerateContentConfig(
+                temperature=0.0, # Zero creativity, just formatting
+                response_mime_type="application/json",
+                response_schema=AIAnalysisSchema, # Strict JSON enforced here
             )
             
-            # Parse the response
-            result = self._parse_response(response.text)
+            final_response = self.client.models.generate_content(
+                model='gemini-2.5-flash-lite',
+                contents=format_prompt,
+                config=format_config,
+            )
             
-            logger.info(f"Gemini estimate for '{event_title}': {result['probability']}% (Confidence: {result['confidence']}%)")
+            # Parse the guaranteed perfect JSON
+            result = self._parse_response(final_response.text)
+            logger.info(f"✅ Production Pipeline Complete: {result['probability']}% (Confidence: {result['confidence']}%)")
             
             return result
             
         except Exception as e:
-            logger.error(f"Error calling Gemini API: {str(e)}")
+            logger.error(f"Error in Gemini Pipeline: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return self._default_response()
-    
-    def _build_probability_prompt(self, title, description, context=None):
-        """
-        Build prompt for Gemini
-        
-        Returns:
-            Formatted prompt string
-        """
-        prompt = f"""You are a quantitative analyst specializing in probability estimation for prediction markets.
 
-Your task is to estimate the TRUE probability of the following event occurring, based on:
-1. Recent news and developments (use Google Search)
-2. Historical precedents and patterns
-3. Statistical analysis and expert opinions
-4. Current market conditions
-
-EVENT TO ANALYZE:
+    def _build_research_prompt(self, title, description, context=None):
+        """Build prompt for the Research phase"""
+        prompt = f"""You are a quantitative analyst. Analyze the following prediction market event:
 Title: {title}
-Description: {description or 'No additional description provided'}
-"""
+Description: {description}
 
+Search the web for the latest news regarding this event.
+Write a comprehensive summary including:
+1. A final probability percentage (0-100)
+2. Your confidence level in this prediction (0-100)
+3. A 2-3 sentence reasoning summary
+4. 3-5 key factors driving this prediction
+5. The main sources or news you found
+"""
         if context:
-            prompt += f"""
-CURRENT MARKET CONTEXT:
-- Current market price: ₦{context.get('current_price', 'N/A')}
-- Market implied probability: {context.get('implied_probability', 'N/A')}%
-- 24h volume: ₦{context.get('volume_24h', 'N/A')}
-"""
-
-        prompt += """
-INSTRUCTIONS:
-1. Search for recent, relevant news and data about this event
-2. Consider historical precedents - how often has this type of outcome occurred?
-3. Evaluate expert opinions and statistical models
-4. Form an independent probability estimate based on evidence, NOT the market price
-5. Assess your confidence level in this estimate
-
-Return your analysis in the following JSON format (and ONLY this JSON, no other text):
-
-{
-    "probability": <number between 0 and 100>,
-    "confidence": <number between 0 and 100>,
-    "reasoning": "<2-3 sentence summary of your analysis>",
-    "key_factors": ["<factor 1>", "<factor 2>", "<factor 3>"],
-    "sources_consulted": "<brief mention of what you researched>"
-}
-
-CRITICAL: Return ONLY valid JSON. No markdown formatting, no code blocks, no preamble.
-"""
-        
+            prompt += f"\nCurrent Market Price: ₦{context.get('current_price', 'N/A')}"
+            prompt += f"\nMarket Implied Probability: {context.get('implied_probability', 'N/A')}%"
+            
         return prompt
-    
+
     def _parse_response(self, response_text):
-        """
-        Parse Gemini's response into structured data
-        
-        Args:
-            response_text: Raw text from Gemini
-            
-        Returns:
-            Dictionary with parsed data
-        """
+        """Parse the guaranteed perfect JSON from the Formatter phase"""
         try:
-            # Clean the response (remove markdown code blocks if present)
-            cleaned_text = response_text.strip()
+            data = json.loads(response_text)
             
-            # Remove ```json and ``` if present
-            if cleaned_text.startswith('```json'):
-                cleaned_text = cleaned_text[7:]
-            if cleaned_text.startswith('```'):
-                cleaned_text = cleaned_text[3:]
-            if cleaned_text.endswith('```'):
-                cleaned_text = cleaned_text[:-3]
+            # Get raw probability
+            prob_raw = float(data.get('probability', 50.0))
             
-            cleaned_text = cleaned_text.strip()
+            # NORMALIZE: If value is between 0 and 1, assume it's 0-1 scale and convert to 0-100
+            if 0 < prob_raw <= 1:
+                prob_raw = prob_raw * 100
+                logger.info(f"Normalized probability from {data.get('probability')} to {prob_raw}")
             
-            # Parse JSON
-            data = json.loads(cleaned_text)
-            
-            # Validate and extract fields
-            probability = float(data.get('probability', 50))
-            confidence = float(data.get('confidence', 50))
-            reasoning = data.get('reasoning', 'Analysis completed')
-            key_factors = data.get('key_factors', [])
-            sources = data.get('sources_consulted', '')
-            
-            # Clamp values to valid ranges
-            probability = max(0, min(100, probability))
-            confidence = max(0, min(100, confidence))
+            # Get raw confidence and normalize similarly
+            conf_raw = float(data.get('confidence', 50.0))
+            if 0 < conf_raw <= 1:
+                conf_raw = conf_raw * 100
+                logger.info(f"Normalized confidence from {data.get('confidence')} to {conf_raw}")
             
             return {
-                'probability': probability,
-                'confidence': confidence,
-                'reasoning': reasoning,
-                'key_factors': key_factors,
-                'sources_consulted': sources,
+                'probability': prob_raw,  # Now always 0-100
+                'confidence': conf_raw,   # Now always 0-100
+                'reasoning': str(data.get('reasoning', 'Analysis complete')).replace('\n', ' '),
+                'key_factors': data.get('key_factors', [])[:5],
+                'sources_consulted': str(data.get('sources_consulted', ''))[:200]
             }
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Gemini response as JSON: {str(e)}")
-            logger.error(f"Response text: {response_text}")
-            
-            # Attempt to extract probability from text
-            return self._fallback_parse(response_text)
         except Exception as e:
-            logger.error(f"Error parsing Gemini response: {str(e)}")
+            logger.error(f"Critical error parsing JSON: {str(e)}")
             return self._default_response()
-    
-    def _fallback_parse(self, text):
-        """
-        Fallback parser if JSON parsing fails
-        Attempts to extract probability from natural language
-        """
-        import re
-        
-        # Try to find probability percentage in text
-        prob_match = re.search(r'(\d+)%?\s*(?:probability|chance|likely)', text, re.IGNORECASE)
-        
-        if prob_match:
-            probability = float(prob_match.group(1))
-        else:
-            probability = 50  # Default to neutral
-        
-        return {
-            'probability': max(0, min(100, probability)),
-            'confidence': 50,
-            'reasoning': text[:200] if text else 'Analysis completed with limited data',
-            'key_factors': [],
-            'sources_consulted': '',
-        }
-    
+
     def _default_response(self):
-        """
-        Default response when Gemini is unavailable
-        """
+        """Fallback for critical failures"""
         return {
-            'probability': 50,
-            'confidence': 0,
-            'reasoning': 'AI analysis unavailable - using neutral estimate',
+            'probability': 50.0,
+            'confidence': 0.0,
+            'reasoning': 'AI analysis unavailable due to system error.',
             'key_factors': [],
             'sources_consulted': '',
         }
-    
-    def review_backtest(self, strategy_name, results):
-        """
-        Generate AI review of backtest results
-        
-        Args:
-            strategy_name: Name of the strategy tested
-            results: Dictionary with backtest metrics
-            
-        Returns:
-            Natural language review and recommendations
-        """
-        if not self.model:
-            return "AI review unavailable - Gemini API key not configured"
-        
-        try:
-            prompt = f"""You are reviewing a quantitative trading strategy backtest.
-
-STRATEGY: {strategy_name}
-
-RESULTS:
-- Total Trades: {results.get('total_trades', 0)}
-- Win Rate: {results.get('win_rate', 0)}%
-- Total Return: {results.get('total_return_pct', 0)}%
-- Max Drawdown: {results.get('max_drawdown_pct', 0)}%
-- Sharpe Ratio: {results.get('sharpe_ratio', 'N/A')}
-
-Provide a concise 3-4 sentence review that:
-1. Highlights the strategy's main strength
-2. Identifies its biggest weakness
-3. Gives ONE specific, actionable improvement suggestion
-
-Be direct and practical. No generic advice."""
-
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
-            
-        except Exception as e:
-            logger.error(f"Error generating backtest review: {str(e)}")
-            return "AI review unavailable"
-
 
 # Global instance
 gemini_client = GeminiClient()

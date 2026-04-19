@@ -53,13 +53,25 @@ def generate_signal(market_id, quant_metrics, ai_probability,
         # Extract probabilities
         market_prob = float(market.implied_probability)
         ai_prob = float(ai_probability['probability'])
-        confidence = int(ai_probability['confidence'])
+
+        # 🔥 ADD THIS BLOCK - Convert AI probability from 0-1 to 0-100 scale
+        if ai_prob <= 1.0:
+            ai_prob = ai_prob * 100
+            logger.info(f"Converted AI probability from {ai_probability['probability']} to {ai_prob}%")
+
+        # Fix confidence conversion (handle both 0-1 and 0-100 scales)
+        confidence_raw = ai_probability.get('confidence', 0)
+        if isinstance(confidence_raw, float) and confidence_raw <= 1.0:
+            confidence = int(confidence_raw * 100)  # Convert 0.7 -> 70
+        else:
+            confidence = int(confidence_raw)  # Already in percentage
 
         # Calculate edge
         edge = calculate_edge(ai_prob, market_prob)
 
         logger.info(f"Market Probability: {market_prob}%")
         logger.info(f"AI Probability: {ai_prob}%")
+        logger.info(f"Confidence: {confidence}%")
         logger.info(f"Edge: {edge} percentage points")
 
         # Check if edge meets threshold
@@ -128,6 +140,19 @@ def generate_signal(market_id, quant_metrics, ai_probability,
         # Save signal to database
         Signal = _get_signal_model()
         signal = Signal.objects.create(**signal_data)
+
+        # 🔥 FIX: Link the AI analysis to this signal
+        try:
+            from signals.models import AIAnalysis
+            # Get the most recent AI analysis for this market
+            latest_ai = AIAnalysis.objects.filter(market=market).latest('analyzed_at')
+            latest_ai.signal = signal
+            latest_ai.save()
+            logger.info(f"✅ Linked AI analysis {latest_ai.id} to signal {signal.id}")
+        except AIAnalysis.DoesNotExist:
+            logger.warning(f"No AI analysis found for market {market.id} to link")
+        except Exception as e:
+            logger.warning(f"Could not link AI analysis: {str(e)}")
 
         logger.info(
             f"✅ Signal generated: {direction} - Edge: {edge}% - EV: {ev}")

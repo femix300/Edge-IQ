@@ -86,7 +86,7 @@ def save_ai_analysis(market, analysis_result):
             confidence_score=int(analysis_result['confidence']),
             reasoning_summary=analysis_result['reasoning'],
             sources_consulted=analysis_result.get('sources_consulted', ''),
-            model_used='gemini-1.5-flash',
+            model_used='gemini-2.5-flash',
             search_grounding_used=True,
         )
         logger.info(f"Saved AI analysis for {market.title}")
