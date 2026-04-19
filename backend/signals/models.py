@@ -100,7 +100,7 @@ class AIAnalysis(models.Model):
     sources_consulted = models.TextField(blank=True)  # List of sources Gemini found
     
     # Gemini metadata
-    model_used = models.CharField(max_length=50, default='gemini-1.5-flash')
+    model_used = models.CharField(max_length=50, default='gemini-2.5-flash')
     search_grounding_used = models.BooleanField(default=True)
     
     # Timestamps

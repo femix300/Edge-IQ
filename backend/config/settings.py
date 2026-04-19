@@ -49,6 +49,9 @@ INSTALLED_APPS = [
     'signals',
     'portfolio',
     'backtesting',
+
+    # others
+    'django_extensions',
 ]
 
 MIDDLEWARE = [
