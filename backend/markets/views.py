@@ -42,28 +42,30 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
         return MarketDetailSerializer
     
     def get_queryset(self):
-        """Filter markets based on query params"""
-        queryset = Market.objects.all()
-        
-        # Filter by status
-        status_filter = self.request.query_params.get('status', 'active')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        
-        # Filter by category
-        category = self.request.query_params.get('category')
-        if category:
-            queryset = queryset.filter(category=category)
-        
-        # Filter by minimum volume
-        min_volume = self.request.query_params.get('min_volume')
-        if min_volume:
-            queryset = queryset.filter(volume_24h__gte=min_volume)
-        
-        # Order by signal potential score
-        queryset = queryset.order_by('-signal_potential_score', '-volume_24h')
-        
-        return queryset
+            """Filter markets based on query params"""
+            queryset = Market.objects.all()
+            
+            # FIX 1: Change default from 'active' to 'open' to match Bayse
+            status_filter = self.request.query_params.get('status', 'open')
+            if status_filter:
+                # Allow comma-separated statuses just in case you need multiple
+                statuses = [s.strip() for s in status_filter.split(',')]
+                queryset = queryset.filter(status__in=statuses)
+            
+            # Filter by category
+            category = self.request.query_params.get('category')
+            if category:
+                queryset = queryset.filter(category=category)
+            
+            # FIX 2: Filter by total_volume instead of volume_24h
+            min_volume = self.request.query_params.get('min_volume')
+            if min_volume:
+                queryset = queryset.filter(total_volume__gte=min_volume)
+            
+            # FIX 3: Order by total_volume instead of volume_24h
+            queryset = queryset.order_by('-signal_potential_score', '-total_volume')
+            
+            return queryset
     
     @action(detail=False, methods=['post'])
     def scan(self, request):

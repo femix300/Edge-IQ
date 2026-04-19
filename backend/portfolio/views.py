@@ -17,6 +17,7 @@ from .serializers import (
 from signals.models import Signal
 from .analytics import calculate_portfolio_metrics
 import logging
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,10 @@ class PortfolioViewSet(viewsets.ViewSet):
         try:
             trade_id = request.data.get('trade_id')
             exit_price = request.data.get('exit_price')
+
+            # in order to fix unsupported operand issue
+            trade_id = int(request.data.get('trade_id'))
+            exit_price = Decimal(str(request.data.get('exit_price')))
             
             trade = Trade.objects.get(id=trade_id, status='open')
             

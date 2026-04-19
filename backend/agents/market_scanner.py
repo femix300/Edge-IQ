@@ -6,18 +6,19 @@ from services.bayse_client import bayse_client, BayseAPIError
 from markets.models import Market
 from django.utils import timezone
 from decimal import Decimal
+from dateutil import parser
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def scan_markets(status='active', min_volume=1000, min_liquidity=500, max_results=20):
+def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
     """
     Scan Bayse for active markets and store in database
     
     Args:
-        status: Market status filter ('active', 'resolved', etc.)
-        min_volume: Minimum 24h volume threshold
+        status: Market status filter ('open', 'closed', etc.)
+        min_volume: Minimum total volume threshold
         min_liquidity: Minimum liquidity threshold
         max_results: Maximum number of markets to return
         
@@ -25,97 +26,164 @@ def scan_markets(status='active', min_volume=1000, min_liquidity=500, max_result
         List of Market objects ranked by signal potential
     """
     try:
-        logger.info(f"Starting market scan - Status: {status}, Min Volume: {min_volume}")
+        logger.info(f"=" * 70)
+        logger.info(f"STARTING MARKET SCAN")
+        logger.info(f"  Status: {status}")
+        logger.info(f"  Min Volume: {min_volume}")
+        logger.info(f"  Min Liquidity: {min_liquidity}")
+        logger.info(f"=" * 70)
         
         # Fetch events from Bayse API
-        events_data = bayse_client.get_all_events(status=status, limit=100)
+        response = bayse_client.get_all_events(status=status, size=50)
         
-        if not events_data:
-            logger.warning("No events returned from Bayse API")
+        logger.info(f"\n📡 Bayse API Response:")
+        logger.info(f"  Type: {type(response)}")
+        logger.info(f"  Keys: {list(response.keys()) if isinstance(response, dict) else 'N/A'}")
+        
+        if not response:
+            logger.warning("❌ No data returned from Bayse API")
             return []
         
-        # Handle different response structures
-        events = events_data if isinstance(events_data, list) else events_data.get('events', [])
+        # Extract events array
+        events = response.get('events', [])
+        pagination = response.get('pagination', {})
         
-        logger.info(f"Fetched {len(events)} events from Bayse")
+        logger.info(f"\n📊 Found {len(events)} events")
+        logger.info(f"  Pagination: Page {pagination.get('page')}/{pagination.get('lastPage')}, Total: {pagination.get('totalCount')}")
+        
+        if not events:
+            logger.warning("❌ Events array is empty")
+            return []
         
         markets_created = []
+        skipped = 0
         
-        for event in events:
+        for idx, event in enumerate(events, 1):
             try:
+                logger.info(f"\n{'─' * 70}")
+                logger.info(f"Event {idx}/{len(events)}")
+                logger.info(f"{'─' * 70}")
+                
                 # Extract event data
                 event_id = event.get('id')
                 title = event.get('title', 'Untitled Event')
                 description = event.get('description', '')
                 category = map_category(event.get('category', 'other'))
                 
-                # Get market data (events can have multiple markets, we'll use the first one)
-                markets_data = event.get('markets', [])
-                if not markets_data:
-                    continue
+                logger.info(f"📌 Title: {title}")
+                logger.info(f"   ID: {event_id}")
+                logger.info(f"   Category: {category}")
                 
-                market_data = markets_data[0]  # Primary market
-                market_id = market_data.get('id')
+                # Extract volume and liquidity from event level
+                total_volume = Decimal(str(event.get('totalVolume', 0)))
+                liquidity = Decimal(str(event.get('liquidity', 0)))
                 
-                # Extract price and volume data
-                current_price = Decimal(str(market_data.get('last_price', 0.5)))
-                volume_24h = Decimal(str(market_data.get('volume_24h', 0)))
-                total_volume = Decimal(str(market_data.get('total_volume', 0)))
-                liquidity = Decimal(str(market_data.get('liquidity', 0)))
+                logger.info(f"   Total Volume: {total_volume}")
+                logger.info(f"   Liquidity: {liquidity}")
                 
                 # Filter by volume and liquidity
-                if volume_24h < min_volume or liquidity < min_liquidity:
+                if total_volume < min_volume:
+                    logger.info(f"   ⏭️  Skipped: volume {total_volume} < {min_volume}")
+                    skipped += 1
                     continue
                 
+                if liquidity < min_liquidity:
+                    logger.info(f"   ⏭️  Skipped: liquidity {liquidity} < {min_liquidity}")
+                    skipped += 1
+                    continue
+                
+                # Get markets array
+                markets_data = event.get('markets', [])
+                
+                if not markets_data:
+                    logger.info(f"   ⚠️  No markets found for this event")
+                    skipped += 1
+                    continue
+                
+                logger.info(f"   Markets: {len(markets_data)}")
+                
+                # Use first market
+                market_data = markets_data[0]
+                market_id = market_data.get('id')
+                
+                # Get price from outcome1Price (YES price)
+                current_price = Decimal(str(market_data.get('outcome1Price', 0.5)))
+                
+                logger.info(f"   Market ID: {market_id}")
+                logger.info(f"   Current Price: {current_price}")
+                
                 # Parse timestamps
-                closes_at = parse_timestamp(market_data.get('closes_at'))
-                opens_at = parse_timestamp(market_data.get('opens_at'))
+                closing_date = event.get('closingDate')
+                resolution_date = event.get('resolutionDate')
+                opening_date = event.get('openingDate')
+                
+                closes_at = parse_timestamp(closing_date)
+                resolved_at = parse_timestamp(resolution_date)
+                opens_at = parse_timestamp(opening_date)
+                
+                if closes_at:
+                    logger.info(f"   Closes: {closes_at}")
                 
                 # Calculate implied probability
                 implied_prob = bayse_client.calculate_implied_probability(current_price)
                 
                 # Calculate signal potential score
                 signal_score = calculate_signal_potential(
-                    volume_24h=volume_24h,
+                    volume=total_volume,
                     liquidity=liquidity,
                     closes_at=closes_at
                 )
                 
+                logger.info(f"   Implied Probability: {implied_prob}%")
+                logger.info(f"   Signal Score: {signal_score}")
+                
                 # Create or update market in database
                 market, created = Market.objects.update_or_create(
-                    bayse_event_id=event_id,
+                    bayse_event_id=str(event_id),
                     defaults={
-                        'bayse_market_id': market_id,
+                        'bayse_market_id': str(market_id) if market_id else '',
                         'title': title,
                         'description': description,
                         'category': category,
                         'current_price': current_price,
                         'implied_probability': implied_prob,
-                        'volume_24h': volume_24h,
+                        'volume_24h': 0,  # Bayse doesn't provide 24h volume
                         'total_volume': total_volume,
                         'liquidity': liquidity,
-                        'status': status,
+                        'status': status if status else event.get('status', 'open'),
                         'opens_at': opens_at,
                         'closes_at': closes_at,
+                        'resolved_at': resolved_at,
                         'signal_potential_score': signal_score,
                         'last_scanned_at': timezone.now(),
                     }
                 )
                 
                 markets_created.append(market)
-                action = "Created" if created else "Updated"
-                logger.info(f"{action} market: {title} (Score: {signal_score})")
+                action = "✅ CREATED" if created else "🔄 UPDATED"
+                logger.info(f"   {action} in database")
                 
             except Exception as e:
-                logger.error(f"Error processing event {event.get('id')}: {str(e)}")
+                logger.error(f"❌ Error processing event {event.get('id', 'unknown')}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                skipped += 1
                 continue
+        
+        # Summary
+        logger.info(f"\n{'=' * 70}")
+        logger.info(f"SCAN COMPLETE")
+        logger.info(f"  Events processed: {len(events)}")
+        logger.info(f"  Markets created/updated: {len(markets_created)}")
+        logger.info(f"  Skipped: {skipped}")
+        logger.info(f"{'=' * 70}\n")
         
         # Get top markets by signal potential
         top_markets = Market.objects.filter(
-            status='active'
+            status__in=['open', 'active']
         ).order_by('-signal_potential_score')[:max_results]
         
-        logger.info(f"Market scan complete. {len(markets_created)} markets processed, {len(top_markets)} top markets returned")
+        logger.info(f"Returning {len(top_markets)} top markets\n")
         
         return list(top_markets)
         
@@ -124,17 +192,17 @@ def scan_markets(status='active', min_volume=1000, min_liquidity=500, max_result
         return []
     except Exception as e:
         logger.error(f"Unexpected error during market scan: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return []
 
 
-def calculate_signal_potential(volume_24h, liquidity, closes_at):
+def calculate_signal_potential(volume, liquidity, closes_at):
     """
     Calculate signal potential score for ranking markets
     
-    Higher score = more likely to have good trading signals
-    
     Args:
-        volume_24h: 24-hour trading volume
+        volume: Total trading volume
         liquidity: Market liquidity
         closes_at: Market closing timestamp
         
@@ -145,24 +213,24 @@ def calculate_signal_potential(volume_24h, liquidity, closes_at):
         score = 0
         
         # Volume component (max 40 points)
-        volume_score = min(40, float(volume_24h) / 1000)
+        volume_score = min(40, float(volume) / 5000)
         score += volume_score
         
         # Liquidity component (max 30 points)
-        liquidity_score = min(30, float(liquidity) / 1000)
+        liquidity_score = min(30, float(liquidity) / 2000)
         score += liquidity_score
         
         # Time remaining component (max 30 points)
         if closes_at:
             time_remaining_hours = (closes_at - timezone.now()).total_seconds() / 3600
             
-            # Peak signal potential is 24-72 hours before close
-            if 24 <= time_remaining_hours <= 72:
+            # Peak signal potential is 24-168 hours (1-7 days) before close
+            if 24 <= time_remaining_hours <= 168:
                 time_score = 30
-            elif time_remaining_hours > 72:
+            elif time_remaining_hours > 168:
                 time_score = 20
-            elif time_remaining_hours < 24:
-                time_score = max(0, 15 - (24 - time_remaining_hours))  # Decreasing
+            elif time_remaining_hours > 0:
+                time_score = max(0, time_remaining_hours / 24 * 30)
             else:
                 time_score = 0
             
@@ -178,65 +246,44 @@ def calculate_signal_potential(volume_24h, liquidity, closes_at):
 def map_category(bayse_category):
     """
     Map Bayse categories to our internal categories
-    
-    Args:
-        bayse_category: Category from Bayse API
-        
-    Returns:
-        Standardized category
     """
-    category_map = {
-        'cryptocurrency': 'crypto',
-        'crypto': 'crypto',
-        'bitcoin': 'crypto',
-        'ethereum': 'crypto',
-        'sports': 'sports',
-        'football': 'sports',
-        'basketball': 'sports',
-        'soccer': 'sports',
-        'politics': 'politics',
-        'elections': 'politics',
-        'entertainment': 'entertainment',
-        'movies': 'entertainment',
-        'music': 'entertainment',
-    }
+    if not bayse_category:
+        return 'other'
     
     category_lower = str(bayse_category).lower()
+    
+    category_map = {
+        'crypto': 'crypto',
+        'cryptocurrency': 'crypto',
+        'sports': 'sports',
+        'football': 'sports',
+        'soccer': 'sports',
+        'politics': 'politics',
+        'entertainment': 'entertainment',
+    }
+    
     return category_map.get(category_lower, 'other')
 
 
 def parse_timestamp(timestamp_str):
     """
-    Parse timestamp string to datetime object
-    
-    Args:
-        timestamp_str: ISO format timestamp string
-        
-    Returns:
-        datetime object or None
+    Parse ISO 8601 timestamp string to datetime object
     """
     if not timestamp_str:
         return None
     
     try:
-        from dateutil import parser
         return parser.parse(timestamp_str)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error parsing timestamp '{timestamp_str}': {str(e)}")
         return None
 
 
 def get_top_markets(limit=20, category=None):
     """
-    Get top markets from database (cached results)
-    
-    Args:
-        limit: Number of markets to return
-        category: Filter by category (optional)
-        
-    Returns:
-        QuerySet of top markets
+    Get top markets from database
     """
-    queryset = Market.objects.filter(status='active')
+    queryset = Market.objects.filter(status__in=['open', 'active'])
     
     if category:
         queryset = queryset.filter(category=category)
