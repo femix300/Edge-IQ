@@ -32,6 +32,7 @@ ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost', cast=Csv())
 # Application definition
 
 INSTALLED_APPS = [
+    'utils.apps.FirestoreConfig',
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -42,6 +43,7 @@ INSTALLED_APPS = [
     # Third party
     'rest_framework',
     'corsheaders',
+    'rest_framework.authtoken',
     'django_celery_beat',
 
     # Local apps
@@ -49,6 +51,7 @@ INSTALLED_APPS = [
     'signals',
     'portfolio',
     'backtesting',
+    'users',
 
     # others
     'django_extensions',
@@ -138,23 +141,38 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # REST Framework
+# REST_FRAMEWORK = {
+#     'DEFAULT_PERMISSION_CLASSES': [
+#         'rest_framework.permissions.AllowAny',
+#     ],
+#     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+#     'PAGE_SIZE': 20,
+#     'DEFAULT_RENDERER_CLASSES': [
+#         'rest_framework.renderers.JSONRenderer',
+#     ]
+# }
+
+
+# REST Framework Authentication
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+    ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',  # Require auth by default
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
-    ]
 }
+
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='http://localhost:5173', cast=Csv())
 CORS_ALLOW_CREDENTIALS = True
 
 # Celery Configuration
-CELERY_ALLOWED_ORIGINS = config(
+CELERY_BROKER_URL = config(
     'REDIS_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
@@ -179,3 +197,21 @@ BAYSE_API_BASE_URL = config('BAYSE_API_BASE_URL')
 BAYSE_PUBLIC_KEY = config('BAYSE_PUBLIC_KEY', default='')
 BAYSE_SECRET_KEY = config('BAYSE_SECRET_KEY', default='')
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
+
+
+# Celery Beat Schedule
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'scan-markets-every-5-minutes': {
+        'task': 'markets.tasks.periodic_market_scan',
+        'schedule': 300,
+    },
+    'deactivate-expired-signals-daily': {
+        'task': 'signals.tasks.async_deactivate_expired_signals',
+        'schedule': crontab(hour=0, minute=0),
+    },
+}
+
+# Firebase
+FIREBASE_CREDENTIALS_PATH = config('FIREBASE_CREDENTIALS_PATH')

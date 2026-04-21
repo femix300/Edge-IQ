@@ -1,7 +1,14 @@
 """
-Agent 02: Quantitative Analysis Agent
-Calculates momentum, volume, and order book metrics
+Agent 02: Quantitative Analysis Agent (Firestore Refactored)
+============================================================
+Original: agents/quant_analyzer.py
+
+Changes made:
+- Added Firestore sync for quant metrics
+- Replaced SQLite-only writes with dual writes (SQLite + Firestore)
+- Ensures quant metrics are available in Firestore for signal generator
 """
+
 from services.bayse_client import bayse_client, BayseAPIError
 from utils.calculations import (
     calculate_momentum,
@@ -73,8 +80,11 @@ def analyze_market(market_id):
             **order_book_metrics,
         }
 
-        # Store metrics in database
+        # Store metrics in SQLite database
         save_quant_metrics(market, quant_metrics)
+
+        # --- NEW: Sync to Firestore for Agent 04 ---
+        sync_quant_metrics_to_firestore(market, quant_metrics)
 
         logger.info(f"Analysis complete for {market.title}")
         logger.info(
@@ -91,6 +101,40 @@ def analyze_market(market_id):
     except Exception as e:
         logger.error(f"Error analyzing market {market_id}: {str(e)}")
         raise
+
+
+def sync_quant_metrics_to_firestore(market, quant_metrics):
+    """
+    Sync quantitative metrics to Firestore for real-time access.
+    """
+    try:
+        from utils.firebase_client import fs, Collection
+        
+        # Use bayse_event_id as the document ID for consistency
+        firestore_doc_id = market.bayse_event_id
+        
+        quant_doc = {
+            "market_id": firestore_doc_id,
+            "market_title": market.title,
+            "momentum_score": float(quant_metrics.get('momentum_score', 0)),
+            "momentum_direction": quant_metrics.get('momentum_direction', 'neutral'),
+            "price_change_1h": float(quant_metrics.get('price_change_1h', 0)),
+            "price_change_6h": float(quant_metrics.get('price_change_6h', 0)),
+            "price_change_24h": float(quant_metrics.get('price_change_24h', 0)),
+            "volume_acceleration": float(quant_metrics.get('volume_acceleration', 1.0)),
+            "volume_trend": quant_metrics.get('volume_trend', 'stable'),
+            "bid_ask_spread": float(quant_metrics.get('bid_ask_spread', 0)),
+            "order_book_bias": quant_metrics.get('order_book_bias', 'neutral'),
+            "bid_depth": float(quant_metrics.get('bid_depth', 0)),
+            "ask_depth": float(quant_metrics.get('ask_depth', 0)),
+            "calculated_at": timezone.now(),
+        }
+        
+        fs.set(Collection.QUANT_METRICS, firestore_doc_id, quant_doc, merge=True)
+        logger.info(f"Synced quant metrics to Firestore for market {market.bayse_event_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to sync quant metrics to Firestore: {e}")
 
 
 def fetch_price_history(market, hours=24, interval='1h'):
@@ -110,12 +154,12 @@ def fetch_price_history(market, hours=24, interval='1h'):
         else:
             time_period = '1Y'
         
-        # Fetch from Bayse API - PASS THE MARKET ID!
+        # Fetch from Bayse API
         history_data = bayse_client.get_price_history(
             event_id=market.bayse_event_id,
             outcome='YES',
             time_period=time_period,
-            market_id=market.bayse_market_id  # ← ADD THIS
+            market_id=market.bayse_market_id
         )
 
         if not history_data:
@@ -126,12 +170,8 @@ def fetch_price_history(market, hours=24, interval='1h'):
         PriceHistory = _get_price_history_model()
         for point in history_data:
             try:
-                # Convert timestamp (Bayse uses milliseconds)
-                timestamp_ms = point.get('timestamp')
-                if timestamp_ms:
-                    from datetime import datetime
-                    timestamp = datetime.fromtimestamp(timestamp_ms / 1000)
-                else:
+                timestamp = parse_timestamp(point.get('timestamp'))
+                if not timestamp:
                     continue
 
                 PriceHistory.objects.update_or_create(
@@ -147,10 +187,6 @@ def fetch_price_history(market, hours=24, interval='1h'):
                 continue
 
         return history_data
-
-    except Exception as e:
-        logger.error(f"Error fetching price history: {str(e)}")
-        return []
 
     except BayseAPIError as e:
         logger.error(f"Bayse API error fetching price history: {str(e)}")
@@ -169,10 +205,9 @@ def fetch_ticker_data(market):
             logger.warning(f"No market ID for {market.title}")
             return {}
 
-        # Add outcome parameter
         ticker = bayse_client.get_ticker(
             market_id=market.bayse_market_id,
-            outcome='YES'  # REQUIRED
+            outcome='YES'
         )
 
         # Update market with latest price
@@ -201,14 +236,14 @@ def fetch_order_book(market, depth=10):
     Fetch order book data from Bayse
     """
     try:
-        # Get outcome_id using the fixed method
+        # First, get the outcome_id
         outcome_id = bayse_client.get_outcome_id(market.bayse_event_id, outcome_label='YES')
         
         if not outcome_id:
-            logger.debug(f"No outcome_id found for market {market.id}")
+            logger.warning(f"No outcome_id found for market {market.id}")
             return {}
 
-        # Get order book
+        # Get order book with outcome_id
         order_book = bayse_client.get_order_book(
             outcome_id=outcome_id,
             depth=depth,
@@ -217,8 +252,11 @@ def fetch_order_book(market, depth=10):
 
         return order_book or {}
 
+    except BayseAPIError as e:
+        logger.error(f"Bayse API error fetching order book: {str(e)}")
+        return {}
     except Exception as e:
-        logger.debug(f"Error fetching order book: {str(e)}")
+        logger.error(f"Error fetching order book: {str(e)}")
         return {}
 
 
@@ -379,8 +417,8 @@ def calculate_order_book_metrics(order_book_data):
         spread = calculate_bid_ask_spread(best_bid, best_ask)
 
         # Calculate total depth on each side
-        bid_depth = sum(float(bid.get('size', 0)) for bid in bids)
-        ask_depth = sum(float(ask.get('size', 0)) for ask in asks)
+        bid_depth = sum(float(bid.get('quantity', 0)) for bid in bids)
+        ask_depth = sum(float(ask.get('quantity', 0)) for ask in asks)
 
         # Determine order book bias
         order_book_bias = get_order_book_bias(bid_depth, ask_depth)
@@ -404,7 +442,7 @@ def calculate_order_book_metrics(order_book_data):
 
 def save_quant_metrics(market, metrics):
     """
-    Save quant metrics to database
+    Save quant metrics to SQLite database
 
     Args:
         market: Market object
@@ -447,12 +485,21 @@ def get_latest_quant_metrics(market):
         return None
 
 
-def parse_timestamp(timestamp_str):
-    """Parse timestamp string to datetime"""
-    if not timestamp_str:
+from django.utils import timezone as django_timezone
+
+def parse_timestamp(timestamp_value):
+    if not timestamp_value:
         return None
     try:
-        from dateutil import parser
-        return parser.parse(timestamp_str)
-    except Exception:
+        if isinstance(timestamp_value, (int, float)):
+            from datetime import datetime
+            naive_dt = datetime.fromtimestamp(timestamp_value / 1000)
+            return django_timezone.make_aware(naive_dt)
+        if isinstance(timestamp_value, str):
+            from dateutil import parser
+            naive_dt = parser.parse(timestamp_value)
+            return django_timezone.make_aware(naive_dt) if not django_timezone.is_aware(naive_dt) else naive_dt
+        return None
+    except Exception as e:
+        logger.error(f"Error parsing timestamp '{timestamp_value}': {e}")
         return None

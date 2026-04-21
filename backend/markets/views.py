@@ -1,6 +1,7 @@
 """
 API views for Markets
 """
+from utils.firebase_client import fs, Collection
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,8 +10,10 @@ from django.utils import timezone
 from .models import Market
 from .serializers import MarketListSerializer, MarketDetailSerializer
 from agents.market_scanner import scan_markets, get_top_markets
-from agents.signal_generator import run_full_analysis_pipeline
+from agents.signal_generator import generate_signal
 import logging
+from .tasks import async_scan_markets, async_analyze_market
+from celery.result import AsyncResult
 
 logger = logging.getLogger(__name__)
 
@@ -66,42 +69,75 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.order_by('-signal_potential_score', '-total_volume')
             
             return queryset
-    
+
     @action(detail=False, methods=['post'])
     def scan(self, request):
         """
         Trigger Agent 01: Market Scanner
-        
-        POST /api/markets/scan/
-        
-        Returns:
-            List of scanned markets
         """
         try:
             logger.info("Triggering market scan via API")
             
-            # Get parameters from request
             max_results = int(request.data.get('max_results', 20))
-            min_volume = float(request.data.get('min_volume', 1000))
+            min_volume = float(request.data.get('min_volume', 0))
+            min_liquidity = float(request.data.get('min_liquidity', 0))
             
-            # Run scanner
             markets = scan_markets(
                 max_results=max_results,
-                min_volume=min_volume
+                min_volume=min_volume,
+                min_liquidity=min_liquidity
             )
             
-            # Serialize and return
-            serializer = MarketListSerializer(markets, many=True)
+            # Format with integer IDs - create SQLite records if missing
+            formatted_markets = []
+            for market in markets:
+                uuid = market.get('bayse_event_id')
+                
+                # Try to get existing SQLite market, or create one
+                sqlite_market, created = Market.objects.get_or_create(
+                    bayse_event_id=uuid,
+                    defaults={
+                        'title': market.get('title', ''),
+                        'bayse_market_id': market.get('bayse_market_id', ''),
+                        'current_price': market.get('current_price', 0),
+                        'implied_probability': market.get('implied_probability', 0),
+                        'signal_potential_score': market.get('signal_potential_score', 0),
+                        'status': market.get('status', 'open'),
+                        'category': market.get('category', 'other'),
+                        'total_volume': market.get('total_volume', 0),
+                        'liquidity': market.get('liquidity', 0),
+                    }
+                )
+                
+                if created:
+                    logger.info(f"Created SQLite market record for UUID: {uuid}")
+                
+                formatted_markets.append({
+                    'id': sqlite_market.id,  # Always integer
+                    'title': market.get('title', ''),
+                    'bayse_event_id': uuid,
+                    'bayse_market_id': market.get('bayse_market_id', ''),
+                    'current_price': market.get('current_price', 0),
+                    'implied_probability': market.get('implied_probability', 0),
+                    'signal_potential_score': market.get('signal_potential_score', 0),
+                    'status': market.get('status', 'open'),
+                    'category': market.get('category', 'other'),
+                    'total_volume': market.get('total_volume', 0),
+                    'liquidity': market.get('liquidity', 0),
+                })
             
             return Response({
                 'success': True,
-                'count': len(markets),
-                'markets': serializer.data,
+                'count': len(formatted_markets),
+                'markets': formatted_markets,
                 'scanned_at': timezone.now(),
             })
             
         except Exception as e:
             logger.error(f"Error during market scan: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
             return Response({
                 'success': False,
                 'error': str(e),
@@ -123,40 +159,58 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
             Complete analysis with quant metrics, AI probability, and signal
         """
         try:
+            from agents.quant_analyzer import analyze_market
+            from agents.ai_probability import estimate_probability
+            from agents.signal_generator import generate_signal
+            from utils.firebase_client import fs, Collection
+            
             market = self.get_object()
             logger.info(f"Running full analysis for market: {market.title}")
             
             # Get user bankroll from request
             user_bankroll = float(request.data.get('user_bankroll', 10000))
             
-            # Run the pipeline
-            result = run_full_analysis_pipeline(
-                market_id=market.id,
+            # Get the correct Firestore document ID (bayse_event_id, not SQLite PK)
+            firestore_doc_id = market.bayse_event_id
+            
+            # --- STEP 1: Sync market to Firestore ---
+            market_data = MarketDetailSerializer(market).data
+            fs.set(Collection.MARKETS, firestore_doc_id, market_data)
+            logger.info(f"Synced market {market.title} to Firestore with ID: {firestore_doc_id}")
+            
+            # --- STEP 2: Run Agent 02 - Quantitative Analysis ---
+            logger.info("Running Agent 02: Quantitative Analysis...")
+            quant_metrics = analyze_market(market.id)
+            logger.info(f"Quant metrics: momentum={quant_metrics.get('momentum_score')}")
+            
+            # --- STEP 3: Run Agent 03 - AI Probability ---
+            logger.info("Running Agent 03: AI Probability Estimation...")
+            ai_result = estimate_probability(firestore_doc_id)
+            logger.info(f"AI Probability: {ai_result.get('probability')}%")
+            
+            # --- STEP 4: Run Agent 04 - Signal Generation ---
+            logger.info("Running Agent 04: Signal Generation...")
+            signal_doc = generate_signal(
+                market_event_id=firestore_doc_id,
                 user_bankroll=user_bankroll
             )
             
-            # Prepare response
-            from signals.serializers import SignalSerializer
+            # --- STEP 5: Get latest AI analysis for response ---
+            latest_ai = fs.query(
+                Collection.AI_ANALYSES,
+                filters=[("market_id", "==", firestore_doc_id)],
+                order_by=("analyzed_at", True),
+                limit=1
+            )
             
             response_data = {
                 'success': True,
-                'market': MarketDetailSerializer(market).data,
-                'quant_metrics': result['quant_metrics'],
-                'ai_analysis': {
-                    'probability': result['ai_analysis']['probability'],
-                    'confidence': result['ai_analysis']['confidence'],
-                    'reasoning': result['ai_analysis']['reasoning'],
-                    'key_factors': result['ai_analysis'].get('key_factors', []),
-                },
-                'signal': None,
+                'market': market_data,
+                'quant_metrics': quant_metrics,
+                'ai_analysis': latest_ai[0] if latest_ai else None,
+                'signal': signal_doc,
                 'analyzed_at': timezone.now(),
             }
-            
-            # Add signal if generated
-            if result['signal']:
-                response_data['signal'] = SignalSerializer(result['signal']).data
-            else:
-                response_data['message'] = 'No signal generated - edge below threshold'
             
             return Response(response_data)
             
@@ -169,7 +223,7 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
                 'success': False,
                 'error': str(e),
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
     @action(detail=False, methods=['get'])
     def top(self, request):
         """
@@ -178,16 +232,131 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
         GET /api/markets/top/?limit=10&category=crypto
         
         Returns:
-            Top markets ranked by signal potential
+            Top markets ranked by signal potential (with integer IDs, no duplicates)
         """
         limit = int(request.query_params.get('limit', 20))
         category = request.query_params.get('category')
         
-        markets = get_top_markets(limit=limit, category=category)
-        serializer = MarketListSerializer(markets, many=True)
+        # Get markets from Firestore (returns dicts with UUIDs)
+        firestore_markets = get_top_markets(limit=limit, category=category)
+        
+        # Deduplicate by bayse_event_id
+        seen_uuids = set()
+        unique_markets = []
+        for fs_market in firestore_markets:
+            uuid = fs_market.get('bayse_event_id')
+            if uuid not in seen_uuids:
+                seen_uuids.add(uuid)
+                unique_markets.append(fs_market)
+        
+        # Map UUIDs to SQLite integer IDs
+        formatted_markets = []
+        for fs_market in unique_markets:
+            uuid = fs_market.get('bayse_event_id')
+            # Find the SQLite market with this bayse_event_id
+            try:
+                sqlite_market = Market.objects.get(bayse_event_id=uuid)
+                formatted_markets.append({
+                    'id': sqlite_market.id,
+                    'title': fs_market.get('title', ''),
+                    'bayse_event_id': uuid,
+                    'bayse_market_id': fs_market.get('bayse_market_id', ''),
+                    'current_price': fs_market.get('current_price', 0),
+                    'implied_probability': fs_market.get('implied_probability', 0),
+                    'signal_potential_score': fs_market.get('signal_potential_score', 0),
+                    'status': fs_market.get('status', 'open'),
+                    'category': fs_market.get('category', 'other'),
+                    'total_volume': fs_market.get('total_volume', 0),
+                    'liquidity': fs_market.get('liquidity', 0),
+                })
+            except Market.DoesNotExist:
+                # Market exists in Firestore but not in SQLite - skip or log
+                logger.warning(f"Market with UUID {uuid} not found in SQLite")
+                pass
         
         return Response({
             'success': True,
-            'count': len(markets),
-            'markets': serializer.data,
+            'count': len(formatted_markets),
+            'markets': formatted_markets,
         })
+
+    @action(detail=False, methods=['post'])
+    def scan_async(self, request):
+        """
+        Start background market scan
+        POST /api/markets/scan_async/
+        """
+        task = async_scan_markets.delay(
+            status=request.data.get('status', 'open'),
+            min_volume=request.data.get('min_volume', 0),
+            min_liquidity=request.data.get('min_liquidity', 0),
+            max_results=request.data.get('max_results', 50)
+        )
+        
+        return Response({
+            'success': True,
+            'task_id': task.id,
+            'message': 'Market scan started in background',
+            'status_url': f'/api/markets/task_status/{task.id}/'
+        })
+
+
+    @action(detail=True, methods=['post'])
+    def analyze_async(self, request, pk=None):
+        """
+        Start background analysis
+        POST /api/markets/{id}/analyze_async/
+        """
+        task = async_analyze_market.delay(
+            market_id=pk,
+            user_bankroll=request.data.get('user_bankroll', 10000)
+        )
+        
+        return Response({
+            'success': True,
+            'task_id': task.id,
+            'message': 'Analysis started in background',
+            'status_url': f'/api/markets/task_status/{task.id}/'
+        })
+
+
+    @action(detail=False, methods=['get'])
+    def task_status(self, request):
+        """
+        Check task status
+        GET /api/markets/task_status/?task_id=xxx
+        """
+        task_id = request.query_params.get('task_id')
+        if not task_id:
+            return Response({'error': 'task_id required'}, status=400)
+        
+        task = AsyncResult(task_id)
+        
+        return Response({
+            'task_id': task_id,
+            'status': task.status,
+            'ready': task.ready(),
+            'result': task.result if task.ready() else None,
+            'error': str(task.info) if task.failed() else None,
+        })
+    
+    def get_object(self):
+        """
+        Override to allow lookup by either:
+        - Integer primary key (SQLite) - e.g., /api/markets/1/
+        - bayse_event_id (UUID from Firestore) - e.g., /api/markets/85bb1091-2888-463a-ab32-d7ba85009b7c/
+        """
+        lookup_value = self.kwargs.get('pk')
+        
+        # Check if the lookup value looks like a UUID (contains hyphens)
+        if lookup_value and '-' in str(lookup_value):
+            # Try to find by bayse_event_id
+            try:
+                market = Market.objects.get(bayse_event_id=lookup_value)
+                return market
+            except Market.DoesNotExist:
+                # If not found by UUID, fall through to default lookup
+                pass
+        
+        # Default behavior: use the regular pk lookup (integer ID)
+        return super().get_object()
