@@ -26,4 +26,5 @@ urlpatterns = [
     path('api/signals/', include('signals.urls')),
     path('api/portfolio/', include('portfolio.urls')),
     path('api/backtest/', include('backtesting.urls')),
+    path('api/users/', include('users.urls')),
 ]

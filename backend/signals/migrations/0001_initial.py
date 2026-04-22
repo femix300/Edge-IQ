@@ -110,7 +110,7 @@ class Migration(migrations.Migration):
                 ("sources_consulted", models.TextField(blank=True)),
                 (
                     "model_used",
-                    models.CharField(default="gemini-1.5-flash", max_length=50),
+                    models.CharField(default="gemini-flash-latest", max_length=50),
                 ),
                 ("search_grounding_used", models.BooleanField(default=True)),
                 ("analyzed_at", models.DateTimeField(auto_now_add=True)),

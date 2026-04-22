@@ -215,44 +215,22 @@ def deactivate_expired_signals() -> int:
     Returns count deactivated.
     """
     from django.utils import timezone
-    from dateutil import parser
-    
     now = timezone.now()
-    count = 0
     
-    # Get all active signals from Firestore
+    # Get all active signals
     active_signals = fs.query(
         Collection.SIGNALS,
         filters=[("is_active", "==", True)],
     )
     
+    count = 0
     for signal_doc in active_signals:
         expires_at = signal_doc.get("expires_at")
-        
-        if not expires_at:
-            continue
-        
-        # Convert string to datetime if needed (Firestore stores as string sometimes)
-        if isinstance(expires_at, str):
-            try:
-                expires_at = parser.parse(expires_at)
-            except Exception as e:
-                logger.warning(f"Could not parse expires_at: {expires_at}")
-                continue
-        
-        # Make timezone-aware if naive
-        if timezone.is_naive(expires_at):
-            expires_at = timezone.make_aware(expires_at)
-        
-        if expires_at <= now:
+        if expires_at and expires_at <= now:
             signal_doc["is_active"] = False
             signal_doc["deactivated_at"] = now
-            doc_id = signal_doc.get("id")
-            if not doc_id:
-                doc_id = f"{signal_doc.get('market_id')}_signal"
-            fs.set(Collection.SIGNALS, doc_id, signal_doc)
+            fs.set(Collection.SIGNALS, signal_doc.get("id"), signal_doc)
             count += 1
-            logger.info(f"Deactivated expired signal for market: {signal_doc.get('market_title')}")
     
-    logger.info(f"Deactivated {count} expired signals in Firestore")
+    logger.info(f"Deactivated {count} expired signals")
     return count
