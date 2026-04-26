@@ -36,4 +36,7 @@ celerybeat-schedule
 celerybeat.pid
 
 # Firebase credentials
-edgeiq-hackathon-firebase-adminsdk-fbsvc-9862e6274f
+edgeiq-hackathon-firebase-adminsdk-fbsvc-9862e6274f.json
+
+*.json
+edgeiq-hackathon-firebase-adminsdk-*.json
