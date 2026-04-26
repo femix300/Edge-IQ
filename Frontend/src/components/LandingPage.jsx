@@ -135,7 +135,7 @@ function LandingPage() {
             {/* <span className="material-symbols-outlined text-2xl text-[#60a5fa]" style={{ fontVariationSettings: "'FILL' 1" }}>
               bolt
             </span> */}
-            <img src="../public/bayseLogo.png" alt="bayse" />
+            <img src="../bayseLogo.png" alt="bayse" />
             <span className="font-headline text-xl font-bold tracking-tighter text-[#b3c5ff] md:text-2xl">
               EdgeIQ
             </span>
@@ -148,7 +148,7 @@ function LandingPage() {
               Markets
             </button>
             <button
-              onClick={() => navigate("/terminal/latest")}
+              onClick={() => navigate("/analysis")}
               className="font-medium text-slate-400 transition-colors hover:text-white cursor-pointer"
             >
               Signals
@@ -187,7 +187,7 @@ function LandingPage() {
         {isMobileMenuOpen && (
           <div className="absolute top-[100%] left-0 w-full bg-[#020617] border-b border-[#434653]/30 px-8 py-6 flex flex-col gap-2 lg:hidden shadow-2xl">
             <button onClick={() => navigate("/markets")} className="text-left font-medium text-slate-300 py-3 border-b border-[#434653]/20">Markets</button>
-            <button onClick={() => navigate("/terminal/latest")} className="text-left font-medium text-slate-300 py-3 border-b border-[#434653]/20">Signals</button>
+            <button onClick={() => navigate("/analysis")} className="text-left font-medium text-slate-300 py-3 border-b border-[#434653]/20">Signals</button>
             <button onClick={() => navigate("/quant-lab")} className="text-left font-medium text-slate-300 py-3 border-b border-[#434653]/20">Analytics</button>
             <button onClick={() => navigate("/pricing")} className="text-left font-medium text-slate-300 py-3 border-b border-[#434653]/20">Pricing</button>
             <button onClick={() => navigate("/auth")} className="text-left font-medium text-slate-300 py-3 border-b border-[#434653]/20">Login</button>

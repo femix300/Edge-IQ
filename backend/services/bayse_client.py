@@ -38,6 +38,9 @@ class BayseClient:
         if self.public_key:
             headers['X-Public-Key'] = self.public_key
             
+        if self.secret_key:
+            headers['X-Secret-Key'] = self.secret_key
+            
         return headers
     
     def _make_request(self, method, endpoint, params=None, data=None):
@@ -78,16 +81,23 @@ class BayseClient:
     
     def _get_cached(self, cache_key, fetch_function, timeout=60):
         """Get data from cache or fetch and cache it"""
-        data = cache.get(cache_key)
-        
+        try:
+            data = cache.get(cache_key)
+        except Exception as exc:
+            logger.warning(f"Cache get failed for key {cache_key}; bypassing cache. Error: {exc}")
+            return fetch_function()
+
         if data is None:
             data = fetch_function()
             if data is not None:
-                cache.set(cache_key, data, timeout)
-                logger.info(f"Cached data for key: {cache_key}")
+                try:
+                    cache.set(cache_key, data, timeout)
+                    logger.info(f"Cached data for key: {cache_key}")
+                except Exception as exc:
+                    logger.warning(f"Cache set failed for key {cache_key}; continuing without cache. Error: {exc}")
         else:
             logger.info(f"Retrieved from cache: {cache_key}")
-            
+
         return data
     
     # ==================== MARKET DATA ENDPOINTS ====================
