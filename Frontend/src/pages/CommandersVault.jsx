@@ -1,9 +1,44 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { portfolioAPI } from "../services/api";
 
 const CommandersVault = () => {
   const navigate = useNavigate();
-  const [riskProfile, setRiskProfile] = useState("Balanced");
+  const [riskProfile, setRiskProfile] = useState("balanced");
+  const [portfolio, setPortfolio] = useState(null);
+  const [trades, setTrades] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchPortfolioData = async () => {
+      try {
+        setError(null);
+        const [profileRes, tradesRes] = await Promise.all([
+          portfolioAPI.getProfile(),
+          portfolioAPI.getTrades()
+        ]);
+
+        if (profileRes.success) {
+          setPortfolio(profileRes.profile);
+          setRiskProfile(profileRes.profile.risk_tolerance || "balanced");
+        } else {
+          setError("Failed to load portfolio");
+        }
+
+        if (tradesRes.success) {
+          setTrades(tradesRes.trades || []);
+        }
+      } catch (err) {
+        console.error("Error fetching portfolio:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPortfolioData();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#020617] px-8 py-10 font-body text-[#dee2f5]">
@@ -37,6 +72,20 @@ const CommandersVault = () => {
           </button>
         </header>
 
+        {error && (
+          <div className="mb-6 rounded-lg bg-[#ffb4ab]/20 border border-[#ffb4ab]/50 p-4 text-[#ffb4ab]">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex h-64 items-center justify-center">
+            <span className="material-symbols-outlined animate-spin text-4xl text-[#1a4db8]">
+              refresh
+            </span>
+          </div>
+        ) : portfolio ? (
+          <>
         {/* Bankroll Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           <div className="bg-[#1a1f2d] p-6 rounded-xl border-t-2 border-[#1a4db8] shadow-lg">
@@ -44,23 +93,23 @@ const CommandersVault = () => {
               Total Balance
             </p>
             <p className="font-headline text-4xl font-bold text-[#dee2f5]">
-              ₦142,500
+              ₦{portfolio.bankroll?.toLocaleString() || 0}
             </p>
           </div>
           <div className="bg-[#1a1f2d] p-6 rounded-xl border-t-2 border-[#7cd9ac] shadow-lg">
             <p className="font-mono text-[10px] uppercase text-[#8d909e] mb-2">
-              Available Cash
+              Win Rate
             </p>
             <p className="font-headline text-4xl font-bold text-[#7cd9ac]">
-              ₦95,000
+              {portfolio.win_rate?.toFixed(1) || 0}%
             </p>
           </div>
           <div className="bg-[#1a1f2d] p-6 rounded-xl border-t-2 border-[#f0a500] shadow-lg">
             <p className="font-mono text-[10px] uppercase text-[#8d909e] mb-2">
-              At-Risk Capital
+              Total Trades
             </p>
             <p className="font-headline text-4xl font-bold text-[#f0a500]">
-              ₦47,500
+              {portfolio.total_trades || 0}
             </p>
           </div>
         </div>
@@ -70,28 +119,11 @@ const CommandersVault = () => {
           <div className="lg:col-span-8 bg-[#090e1b] rounded-2xl border border-[#434653]/30 p-6">
             <h2 className="font-headline text-2xl mb-6">Active Trades</h2>
             <div className="space-y-4">
-              {[
-                {
-                  name: "BTC touches $100k",
-                  stake: "₦20,000",
-                  pnl: "+₦4,500",
-                  color: "text-[#7cd9ac]",
-                },
-                {
-                  name: "NVDA Q2 Earnings Beat",
-                  stake: "₦15,000",
-                  pnl: "-₦1,200",
-                  color: "text-[#ffb4ab]",
-                },
-                {
-                  name: "Solana ETF Approval",
-                  stake: "₦12,500",
-                  pnl: "+₦8,900",
-                  color: "text-[#7cd9ac]",
-                },
-              ].map((pos, i) => (
+              {trades.length === 0 ? (
+                <div className="text-sm text-[#8d909e]">No active trades</div>
+              ) : trades.map((trade) => (
                 <div
-                  key={i}
+                  key={trade.id}
                   className="flex items-center justify-between p-4 bg-[#1a1f2d] rounded-xl border border-[#434653]/10"
                 >
                   <div className="flex items-center gap-4">
@@ -99,19 +131,34 @@ const CommandersVault = () => {
                       deployed_code
                     </span>
                     <div>
-                      <p className="font-headline font-semibold">{pos.name}</p>
+                      <p className="font-headline font-semibold">{trade.market_title || ('Trade ' + String(trade.id).substring(0,6))}</p>
                       <p className="font-mono text-xs text-[#8d909e]">
-                        Stake: {pos.stake}
+                        Stake: ₦{Number(trade.stake_amount || 0).toLocaleString()}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-mono text-[10px] uppercase text-[#8d909e]">
-                      Current Profit/Loss
-                    </p>
-                    <p className={`font-mono text-lg font-bold ${pos.color}`}>
-                      {pos.pnl}
-                    </p>
+                  <div className="flex items-center gap-4 text-right">
+                    <div>
+                        <p className="font-mono text-[10px] uppercase text-[#8d909e]">
+                          Current Value
+                        </p>
+                        <p className={`font-mono text-[10px] ${(trade.current_value >= trade.stake_amount) ? 'text-[#7cd9ac]' : 'text-[#ffb4ab]'}`}>
+                          {trade.current_value || trade.stake_amount}
+                        </p>
+                    </div>
+                    <button 
+                      onClick={async () => {
+                        try {
+                           await portfolioAPI.closeTrade({ trade_id: trade.id, exit_price: trade.current_value || 0 });
+                           window.location.reload();
+                        } catch(e) {
+                           alert(e.message || "Failed to close trade");
+                        }
+                      }}
+                      className="px-3 py-1 bg-[#ffb4ab]/10 text-[#ffb4ab] rounded hover:bg-[#ffb4ab]/20 transition-colors"
+                    >
+                      Close
+                    </button>
                   </div>
                 </div>
               ))}
@@ -176,6 +223,10 @@ const CommandersVault = () => {
             </button>
           </div>
         </div>
+          </>
+        ) : (
+          <div className="text-center text-[#8d909e]">No portfolio data available</div>
+        )}
       </div>
     </div>
   );

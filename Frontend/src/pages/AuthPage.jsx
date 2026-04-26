@@ -5,15 +5,46 @@ import { useAuth } from "../contexts/AuthContext";
 const AuthPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, register } = useAuth();
   const [isLogin, setIsLogin] = useState(
     location.state?.isSignUp === true ? false : true,
   );
 
-  const handleSubmit = (e) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    login();
-    navigate("/markets");
+    setError("");
+    setSuccess("");
+    setLoading(true);
+
+    try {
+      let response;
+      
+      if (isLogin) {
+        response = await login(email, password);
+      } else {
+        response = await register(email, password, username);
+      }
+
+      if (response.success) {
+        setSuccess(isLogin ? "Login successful!" : "Registration successful!");
+        setTimeout(() => {
+          navigate("/markets");
+        }, 500);
+      } else {
+        setError(response.error || (isLogin ? "Login failed" : "Registration failed"));
+      }
+    } catch (err) {
+      setError(err.message || "An error occurred");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -47,16 +78,30 @@ const AuthPage = () => {
           </h2>
         </div>
 
+        {error && (
+          <div className="mb-4 rounded-lg bg-[#ffb4ab]/20 border border-[#ffb4ab]/50 p-3 text-[#ffb4ab] text-sm">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 rounded-lg bg-[#7cd9ac]/20 border border-[#7cd9ac]/50 p-3 text-[#7cd9ac] text-sm">
+            {success}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
           {!isLogin && (
             <div>
               <label className="mb-1 block font-mono text-xs uppercase tracking-widest text-[#8d909e]">
-                Full Name
+                Username
               </label>
               <input
                 type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full rounded-xl border border-[#434653]/50 bg-[#1a1f2d] px-4 py-3 text-[#dee2f5] placeholder-[#8d909e] outline-none transition-colors focus:border-[#b3c5ff] focus:bg-[#252a38]"
-                placeholder="John Doe"
+                placeholder="trader_name"
                 required
               />
             </div>
@@ -68,6 +113,8 @@ const AuthPage = () => {
             </label>
             <input
               type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl border border-[#434653]/50 bg-[#1a1f2d] px-4 py-3 text-[#dee2f5] placeholder-[#8d909e] outline-none transition-colors focus:border-[#b3c5ff] focus:bg-[#252a38]"
               placeholder="you@example.com"
               required
@@ -80,6 +127,8 @@ const AuthPage = () => {
             </label>
             <input
               type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-xl border border-[#434653]/50 bg-[#1a1f2d] px-4 py-3 text-[#dee2f5] placeholder-[#8d909e] outline-none transition-colors focus:border-[#b3c5ff] focus:bg-[#252a38]"
               placeholder="••••••••"
               required
@@ -88,16 +137,17 @@ const AuthPage = () => {
 
           <button
             type="submit"
-            className="w-full cursor-pointer rounded-xl bg-[#1a4db8] py-3.5 font-headline text-lg font-bold text-[#b8c8ff] shadow-lg transition-transform hover:brightness-110 active:scale-[0.98]"
+            disabled={loading}
+            className="w-full cursor-pointer rounded-xl bg-[#1a4db8] py-3.5 font-headline text-lg font-bold text-[#b8c8ff] shadow-lg transition-transform hover:brightness-110 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isLogin ? "Log In" : "Sign Up"}
+            {loading ? "Processing..." : isLogin ? "Log In" : "Sign Up"}
           </button>
         </form>
 
         <div className="my-8 flex items-center">
           <div className="flex-1 border-t border-[#434653]/30"></div>
           <span className="mx-4 font-mono text-xs text-[#8d909e]">
-            OR CONNECT WITH
+            OR
           </span>
           <div className="flex-1 border-t border-[#434653]/30"></div>
         </div>

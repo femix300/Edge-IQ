@@ -12,7 +12,7 @@ const Sidebar = () => {
   const menuItems = [
     { name: "Home", path: "/", icon: "home" },
     { name: "Markets", path: "/markets", icon: "grid_view" },
-    { name: "Analysis", path: "/terminal/latest", icon: "monitoring" },
+    { name: "Analysis", path: "/analysis", icon: "monitoring" },
     { name: "Data", path: "/quant-lab", icon: "analytics" },
     { name: "Wallet", path: "/vault", icon: "wallet" },
   ];

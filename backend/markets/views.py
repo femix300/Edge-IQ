@@ -48,12 +48,20 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
             """Filter markets based on query params"""
             queryset = Market.objects.all()
             
-            # FIX 1: Change default from 'active' to 'open' to match Bayse
-            status_filter = self.request.query_params.get('status', 'open')
+            status_filter = self.request.query_params.get('status', 'active')
             if status_filter:
-                # Allow comma-separated statuses just in case you need multiple
-                statuses = [s.strip() for s in status_filter.split(',')]
-                queryset = queryset.filter(status__in=statuses)
+                statuses = [s.strip() for s in status_filter.split(',') if s.strip()]
+                # Support both frontend and DB naming conventions.
+                mapped_statuses = []
+                for current_status in statuses:
+                    lowered = current_status.lower()
+                    if lowered == 'open':
+                        mapped_statuses.extend(['open', 'active'])
+                    elif lowered == 'active':
+                        mapped_statuses.extend(['active', 'open'])
+                    else:
+                        mapped_statuses.append(lowered)
+                queryset = queryset.filter(status__in=list(dict.fromkeys(mapped_statuses)))
             
             # Filter by category
             category = self.request.query_params.get('category')
@@ -102,7 +110,7 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
                         'current_price': market.get('current_price', 0),
                         'implied_probability': market.get('implied_probability', 0),
                         'signal_potential_score': market.get('signal_potential_score', 0),
-                        'status': market.get('status', 'open'),
+                        'status': market.get('status', 'active'),
                         'category': market.get('category', 'other'),
                         'total_volume': market.get('total_volume', 0),
                         'liquidity': market.get('liquidity', 0),
@@ -120,7 +128,7 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
                     'current_price': market.get('current_price', 0),
                     'implied_probability': market.get('implied_probability', 0),
                     'signal_potential_score': market.get('signal_potential_score', 0),
-                    'status': market.get('status', 'open'),
+                    'status': market.get('status', 'active'),
                     'category': market.get('category', 'other'),
                     'total_volume': market.get('total_volume', 0),
                     'liquidity': market.get('liquidity', 0),
@@ -286,19 +294,27 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
         Start background market scan
         POST /api/markets/scan_async/
         """
-        task = async_scan_markets.delay(
-            status=request.data.get('status', 'open'),
-            min_volume=request.data.get('min_volume', 0),
-            min_liquidity=request.data.get('min_liquidity', 0),
-            max_results=request.data.get('max_results', 50)
-        )
-        
-        return Response({
-            'success': True,
-            'task_id': task.id,
-            'message': 'Market scan started in background',
-            'status_url': f'/api/markets/task_status/{task.id}/'
-        })
+        try:
+            task = async_scan_markets.delay(
+                status=request.data.get('status', 'open'),
+                min_volume=request.data.get('min_volume', 0),
+                min_liquidity=request.data.get('min_liquidity', 0),
+                max_results=request.data.get('max_results', 50)
+            )
+
+            return Response({
+                'success': True,
+                'task_id': task.id,
+                'message': 'Market scan started in background',
+                'status_url': f'/api/markets/task_status/?task_id={task.id}'
+            })
+        except Exception as exc:
+            logger.error(f"Failed to queue market scan task: {exc}")
+            return Response({
+                'success': False,
+                'error': 'Failed to queue scan task. Ensure Celery broker/worker is running.',
+                'detail': str(exc),
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
     @action(detail=True, methods=['post'])
@@ -307,17 +323,25 @@ class MarketViewSet(viewsets.ReadOnlyModelViewSet):
         Start background analysis
         POST /api/markets/{id}/analyze_async/
         """
-        task = async_analyze_market.delay(
-            market_id=pk,
-            user_bankroll=request.data.get('user_bankroll', 10000)
-        )
-        
-        return Response({
-            'success': True,
-            'task_id': task.id,
-            'message': 'Analysis started in background',
-            'status_url': f'/api/markets/task_status/{task.id}/'
-        })
+        try:
+            task = async_analyze_market.delay(
+                market_id=pk,
+                user_bankroll=request.data.get('user_bankroll', 10000)
+            )
+
+            return Response({
+                'success': True,
+                'task_id': task.id,
+                'message': 'Analysis started in background',
+                'status_url': f'/api/markets/task_status/?task_id={task.id}'
+            })
+        except Exception as exc:
+            logger.error(f"Failed to queue analysis task for market {pk}: {exc}")
+            return Response({
+                'success': False,
+                'error': 'Failed to queue analysis task. Ensure Celery broker/worker is running.',
+                'detail': str(exc),
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
 
     @action(detail=False, methods=['get'])

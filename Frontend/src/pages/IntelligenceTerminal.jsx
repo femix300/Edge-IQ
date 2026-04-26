@@ -1,76 +1,289 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { mockEvents } from "../data/mockEvents";
+import { marketsAPI, portfolioAPI } from "../services/api";
 
-const mockLogs = [
-  {
-    agent: "Scanner",
-    message: "Getting live market data...",
-    status: "loading",
-  },
-  {
-    agent: "Math Bot",
-    message: "Calculating price movements...",
-    status: "loading",
-  },
-  {
-    agent: "Researcher",
-    message: "Searching recent news...",
-    status: "loading",
-  },
-  {
-    agent: "Manager",
-    message: "Calculating best bet size...",
-    status: "loading",
-  },
-];
+const extractMarketsList = (response) => response?.results || response?.markets || [];
+const MAX_ANALYSIS_POLL_ATTEMPTS = 45;
+const ANALYSIS_POLL_INTERVAL_MS = 2000;
 
 const IntelligenceTerminal = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const market = mockEvents.find((m) => m.id === id) || mockEvents[0];
+  
+  const [market, setMarket] = useState(null);
+  const [analysis, setAnalysis] = useState(null);
+  const [portfolio, setPortfolio] = useState(null);
   const [logs, setLogs] = useState([]);
   const [researching, setResearching] = useState(true);
   const [edgePercent, setEdgePercent] = useState(0);
   const [stakeSlider, setStakeSlider] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [taskId, setTaskId] = useState(null);
+  const [taskStatus, setTaskStatus] = useState("IDLE");
+  const bankroll = Number(portfolio?.bankroll || 10000);
 
-  const bankroll = 100000;
+  const startAsyncAnalysis = async (marketId, userBankroll) => {
+    try {
+      setResearching(true);
+      setTaskStatus("PENDING");
+      setLogs((prev) => [
+        ...prev,
+        {
+          agent: "Researcher",
+          message: "Queued async analysis job...",
+          status: "pending",
+          time: new Date().toLocaleTimeString(),
+        },
+      ]);
 
-  useEffect(() => {
-    // Run Agentic Workflow Mock
-    let step = 0;
-    setLogs([]);
-    const interval = setInterval(() => {
-      if (step < mockLogs.length) {
+      const asyncRes = await marketsAPI.analyzeMarketAsync(marketId, userBankroll);
+      if (asyncRes?.success && asyncRes?.task_id) {
+        setTaskId(asyncRes.task_id);
         setLogs((prev) => [
           ...prev,
           {
-            ...mockLogs[step],
-            status: "done",
+            agent: "Researcher",
+            message: "Analysis running in background...",
+            status: "pending",
             time: new Date().toLocaleTimeString(),
           },
         ]);
-        step++;
       } else {
-        clearInterval(interval);
         setResearching(false);
-        setEdgePercent(market.edge);
-
-        // Simple algorithm to recommend stake size based on edge utilizing part of Bankroll (Mock Kelly)
-        const recommendedStake = Math.min(
-          bankroll,
-          Math.max(1000, Math.floor((market.edge / 100) * bankroll * 2.5)),
-        );
-        // Round to nearest 1000
-        setStakeSlider(Math.round(recommendedStake / 1000) * 1000);
+        setError("Failed to start async analysis job.");
       }
-    }, 1200);
+    } catch (analysisErr) {
+      console.error("Analysis error:", analysisErr);
+      setTaskStatus("FAILED");
+      setResearching(false);
+      setError(analysisErr?.message || "Failed to queue async analysis task.");
+      setLogs((prev) => [
+        ...prev,
+        {
+          agent: "Researcher",
+          message: "Failed to queue analysis job.",
+          status: "error",
+          time: new Date().toLocaleTimeString(),
+        },
+      ]);
+    }
+  };
 
-    return () => clearInterval(interval);
-  }, []);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        let resolvedMarketId = id;
+        if (!resolvedMarketId || resolvedMarketId === "latest") {
+          const savedId = localStorage.getItem("edgeiq_last_analysis_market_id");
+          if (savedId && resolvedMarketId !== "latest") {
+            resolvedMarketId = savedId;
+          }
+        }
+
+        if (!resolvedMarketId || resolvedMarketId === "latest") {
+          const latestRes = await marketsAPI.getMarkets({ status: "open", page_size: 1 });
+          const latestMarkets = extractMarketsList(latestRes);
+          if (!latestMarkets.length) {
+            setError("No markets available for analysis.");
+            setResearching(false);
+            return;
+          }
+          resolvedMarketId = String(latestMarkets[0].id);
+        }
+
+        const marketRes = await marketsAPI.getMarket(resolvedMarketId);
+        const marketData = marketRes.market || marketRes;
+        setMarket(marketData);
+        localStorage.setItem("edgeiq_last_analysis_market_id", String(marketData.id));
+        setLogs([
+          { agent: "Scanner", message: `Loaded market: ${marketData.title || resolvedMarketId}`, status: "done", time: new Date().toLocaleTimeString() },
+        ]);
+
+        let userBankroll = 10000;
+        try {
+          const portfolioRes = await portfolioAPI.getProfile();
+          if (portfolioRes.success || portfolioRes.bankroll) {
+            const profileData = portfolioRes.profile || portfolioRes;
+            setPortfolio(profileData);
+            userBankroll = profileData.bankroll || 10000;
+            setLogs((prev) => [
+              ...prev,
+              { agent: "Math Bot", message: `Bankroll loaded: ₦${Number(userBankroll).toLocaleString()}`, status: "done", time: new Date().toLocaleTimeString() },
+            ]);
+          }
+        } catch (e) {
+          console.warn("Could not fetch portfolio profile:", e);
+        }
+
+        // Render market view immediately, then run analysis in background.
+        setLoading(false);
+        if (marketData?.id) {
+          await startAsyncAnalysis(marketData.id, userBankroll);
+        } else {
+          setResearching(false);
+        }
+      } catch (err) {
+        console.error("Error fetching market data:", err);
+        setError(err.message || "Failed to load market data.");
+        setResearching(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [id]);
+
+  useEffect(() => {
+    if (!taskId) return;
+
+    let attempts = 0;
+    let lastSeenStatus = "";
+
+    const pollHandle = setInterval(async () => {
+      try {
+        attempts += 1;
+        const statusRes = await marketsAPI.getTaskStatus(taskId);
+        const currentStatus = statusRes?.status || "UNKNOWN";
+        setTaskStatus(currentStatus);
+
+        if (currentStatus !== lastSeenStatus) {
+          lastSeenStatus = currentStatus;
+          setLogs((prev) => [
+            ...prev,
+            {
+              agent: "Researcher",
+              message: `Task status: ${currentStatus}`,
+              status: statusRes?.ready ? "done" : "pending",
+              time: new Date().toLocaleTimeString(),
+            },
+          ]);
+        }
+
+        if (statusRes?.ready) {
+          clearInterval(pollHandle);
+
+          const taskResult = statusRes?.result;
+          const taskFailed = currentStatus === "FAILURE" || taskResult?.status === "error";
+          if (taskFailed) {
+            setError(taskResult?.error || statusRes?.error || "Async analysis failed.");
+            setLogs((prev) => [
+              ...prev,
+              {
+                agent: "Researcher",
+                message: "Background analysis failed.",
+                status: "error",
+                time: new Date().toLocaleTimeString(),
+              },
+            ]);
+            setResearching(false);
+            return;
+          }
+
+          const payload = taskResult?.result || taskResult;
+          if (payload) {
+            setAnalysis(payload);
+          }
+          setLogs((prev) => [
+            ...prev,
+            {
+              agent: "Researcher",
+              message: "Signal generation complete.",
+              status: "done",
+              time: new Date().toLocaleTimeString(),
+            },
+          ]);
+          setResearching(false);
+        }
+
+        if (attempts >= MAX_ANALYSIS_POLL_ATTEMPTS) {
+          clearInterval(pollHandle);
+          setResearching(false);
+          setTaskStatus("TIMEOUT");
+          setError("Analysis is still running in background. If this persists, ensure Celery worker is running.");
+        }
+      } catch (pollErr) {
+        clearInterval(pollHandle);
+        setResearching(false);
+        setTaskStatus("FAILED");
+        setError(pollErr?.message || "Failed to poll analysis status.");
+      }
+    }, ANALYSIS_POLL_INTERVAL_MS);
+
+    return () => clearInterval(pollHandle);
+  }, [taskId]);
+
+  useEffect(() => {
+    if (!market) return;
+
+    const edge = Number(analysis?.signal?.edge_score || analysis?.ai_analysis?.edge_score || 0);
+    setEdgePercent(edge);
+
+    const currentBankroll = Number(portfolio?.bankroll || 10000);
+    const recommendedStake = Math.min(
+      currentBankroll,
+      Math.max(1000, Math.floor((edge / 100) * currentBankroll * 2.5)),
+    );
+    setStakeSlider(Math.round(recommendedStake / 1000) * 1000);
+  }, [analysis, market, portfolio]);
+
+  const handleSimulateTrade = async () => {
+    try {
+        setLoading(true);
+        if (!analysis?.signal?.id) {
+           setError('No signal available to execute trade.');
+           setLoading(false);
+           return;
+        }
+        const res = await portfolioAPI.simulateTrade({
+           signal_id: analysis.signal.id,
+           stake_amount: stakeSlider
+        });
+        
+        if (res.success || res.trade_id) {
+           navigate('/vault');
+        } else {
+           setError(res.error || 'Failed to simulate trade.');
+           setLoading(false);
+        }
+    } catch(e) {
+        setError(e.message || 'Execution error');
+        setLoading(false);
+    }
+  };
+
+  const displayedProbability = Number(
+    analysis?.ai_analysis?.probability ?? market?.implied_probability ?? 0,
+  );
+  const marketPricePercent = Math.round(
+    Number(market?.current_price ?? market?.price ?? 0) * 100,
+  );
+  const analysisStateLabel = researching
+    ? `ANALYZING (${taskStatus})`
+    : analysis?.signal
+      ? "SIGNAL READY"
+      : "ANALYSIS COMPLETE";
 
   return (
     <div className="min-h-screen bg-[#020617] p-4 lg:p-10 font-body text-[#dee2f5] grid grid-cols-1 lg:grid-cols-12 gap-8">
+      {error && (
+        <div className="col-span-full rounded-lg bg-[#ffb4ab]/20 border border-[#ffb4ab]/50 p-4 text-[#ffb4ab]">
+          {error}
+        </div>
+      )}
+      
+      {loading ? (
+        <div className="col-span-full flex h-64 items-center justify-center">
+          <span className="material-symbols-outlined animate-spin text-4xl text-[#1a4db8]">
+            refresh
+          </span>
+        </div>
+      ) : market ? (
+        <>
       {/* SIDEBAR: The Intelligence Waterfall */}
       <div className="lg:col-span-3 flex flex-col gap-6">
         <div className="flex items-center gap-3 border-b border-[#434653]/30 pb-4">
@@ -130,15 +343,15 @@ const IntelligenceTerminal = () => {
         <div className="rounded-2xl bg-[#1a1f2d] border border-[#434653]/30 p-6 flex flex-col items-start gap-4 shadow-lg md:flex-row md:items-center md:justify-between">
           <div>
             <p className="font-mono text-xs uppercase text-[#8d909e] mb-1">
-              Market ID: {market.id}
+              Market {market.bayse_event_id || market.id}
             </p>
             <h1 className="font-headline text-2xl md:text-3xl font-bold">
-              {market.title}
+              {market.title || "Market Analysis"}
             </h1>
           </div>
           <div className="w-full text-left md:w-auto md:text-right">
             <span className="inline-block px-3 py-1 rounded bg-[#7cd9ac]/10 text-[#7cd9ac] font-mono text-sm border border-[#7cd9ac]/20">
-              {researching ? "ANALYZING" : "SIGNAL READY"}
+              {analysisStateLabel}
             </span>
           </div>
         </div>
@@ -151,7 +364,7 @@ const IntelligenceTerminal = () => {
             </h3>
 
             <div className="relative w-full h-48 flex items-end justify-center mb-6">
-              {/* Morphing Bell Curve Mock */}
+              {/* Probability curve visualization */}
               <svg
                 viewBox="0 0 400 200"
                 className="w-full h-full drop-shadow-[0_0_15px_rgba(26,77,184,0.4)]"
@@ -191,7 +404,7 @@ const IntelligenceTerminal = () => {
                       fill="#7cd9ac"
                       className="font-mono text-sm"
                     >
-                      True Prob: {market.trueProb}%
+                      True Prob: {Math.round(displayedProbability)}%
                     </text>
                     <line
                       x1="280"
@@ -208,7 +421,7 @@ const IntelligenceTerminal = () => {
                       fill="#f0a500"
                       className="font-mono text-sm"
                     >
-                      Mkt: {Math.round(market.price * 100)}%
+                      Mkt: {marketPricePercent}%
                     </text>
                   </>
                 )}
@@ -289,7 +502,7 @@ const IntelligenceTerminal = () => {
                     value={stakeSlider}
                     onChange={(e) => setStakeSlider(Number(e.target.value))}
                     className="w-full accent-[#7cd9ac] opacity-90 cursor-pointer"
-                    disabled={researching}
+                    disabled={researching || !analysis?.signal?.id}
                   />
                   {!researching && (
                     <p className="text-xs text-[#8d909e] mt-2 italic">
@@ -298,8 +511,8 @@ const IntelligenceTerminal = () => {
                   )}
                 </div>
 
-                <button
-                  disabled={researching}
+                <button onClick={handleSimulateTrade}
+                  disabled={researching || !analysis?.signal?.id}
                   className="w-full py-4 rounded-xl font-bold text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-[#7cd9ac] text-[#002b18] hover:brightness-110 active:scale-[0.98]"
                 >
                   {researching ? "Awaiting Signal..." : "Execute Buy Position"}
@@ -309,8 +522,13 @@ const IntelligenceTerminal = () => {
           </div>
         </div>
       </div>
+        </>
+      ) : (
+        <div className="col-span-full text-center text-[#8d909e]">Market not found</div>
+      )}
     </div>
   );
 };
 
 export default IntelligenceTerminal;
+

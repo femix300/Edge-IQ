@@ -1,6 +1,25 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { mockEvents } from "../data/mockEvents";
+
+import { marketsAPI } from "../services/api";
+
+const mapMarketForUI = (market) => {
+  const price = Number(market.current_price ?? market.price ?? 0);
+  const probability = Number(market.implied_probability ?? 0);
+  const volume = Number(market.volume_24h ?? market.total_volume ?? market.volume ?? 0);
+  const liquidity = Number(market.liquidity ?? 0);
+  const timeToEnd = Number(market.time_remaining_hours ?? market.timeToEnd ?? 0);
+
+  return {
+    ...market,
+    price,
+    volume,
+    liquidity,
+    timeToEnd,
+    change: market.change || `${probability.toFixed(1)}%`,
+    history: Array.isArray(market.history) ? market.history : [],
+  };
+};
 
 const formatNum = (num) => {
   if (num >= 1e6) return (num / 1e6).toFixed(1) + "M";
@@ -13,25 +32,26 @@ const MarketPulse = () => {
   const [filter, setFilter] = useState("Volume");
   const [markets, setMarkets] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Attempt to fetch from Bayse API, fallback to mock data on fail
-    fetch("https://api.bayse.io/v1/pm/events")
-      .then((res) => {
-        if (!res.ok) throw new Error("API down");
-        return res.json();
-      })
-      .then((data) => {
-        setMarkets(data);
+    // Fetch and normalize backend API response shape for UI rendering
+    const fetchMarkets = async () => {
+      try {
+        setError(null);
+        const response = await marketsAPI.getMarkets({ status: "open" });
+
+        const payload = response?.markets || response?.results || [];
+        setMarkets(payload.map(mapMarketForUI));
+      } catch (err) {
+        console.error("Error fetching markets:", err);
+        setError(err.message || "Failed to load markets from backend");
+      } finally {
         setLoading(false);
-      })
-      .catch(() => {
-        // Fallback
-        setTimeout(() => {
-          setMarkets(mockEvents);
-          setLoading(false);
-        }, 800);
-      });
+      }
+    };
+
+    fetchMarkets();
   }, []);
 
   return (
@@ -46,6 +66,12 @@ const MarketPulse = () => {
           </span>{" "}
           Return to Hub
         </button>
+
+        {error && (
+          <div className="mb-6 rounded-lg bg-[#ffb4ab]/20 border border-[#ffb4ab]/50 p-4 text-[#ffb4ab]">
+            <p>Error loading markets: {error}</p>
+          </div>
+        )}
         {/* Header */}
         <header className="mb-10 flex flex-col items-start gap-6 md:flex-row md:items-end md:justify-between">
           <div>
@@ -81,6 +107,11 @@ const MarketPulse = () => {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {markets.length === 0 && !error && (
+              <div className="col-span-full rounded-xl border border-[#434653]/30 bg-[#090e1b] p-6 text-[#8d909e]">
+                No markets available right now. Try scanning markets from the backend first.
+              </div>
+            )}
             {[...markets]
               .sort((a, b) => {
                 if (filter === "Volume") return b.volume - a.volume;
@@ -115,7 +146,7 @@ const MarketPulse = () => {
                             {Math.round(market.price * 100)}¢
                           </p>
                           <span
-                            className={`font-mono text-xs ${market.change.startsWith("+") ? "text-[#7cd9ac]" : "text-[#ffb4ab]"}`}
+                            className={`font-mono text-xs ${String(market.change).startsWith("+") ? "text-[#7cd9ac]" : "text-[#ffb4ab]"}`}
                           >
                             {market.change}
                           </span>
@@ -141,29 +172,35 @@ const MarketPulse = () => {
 
                     {/* Dynamic Sparkline */}
                     <div className="mb-6 h-12 w-full flex items-end gap-1 opacity-70">
-                      {market.history.map((val, idx) => {
-                        const isUp = market.change.startsWith("+");
-                        const color = isUp
-                          ? val > 80
-                            ? "bg-[#7cd9ac]"
-                            : "bg-[#1a4db8]"
-                          : val < 20
-                            ? "bg-[#ffb4ab]"
-                            : "bg-[#303443]";
-                        const shadow =
-                          isUp && val > 60 ? "shadow-[0_0_8px_#7cd9ac]" : "";
-                        return (
-                          <div
-                            key={idx}
-                            className={`flex-1 rounded-t ${color} ${shadow} transition-all duration-500`}
-                            style={{ height: `${Math.max(10, val)}%` }}
-                          />
-                        );
-                      })}
+                      {market.history.length > 0 ? (
+                        market.history.map((val, idx) => {
+                          const isUp = String(market.change).startsWith("+");
+                          const color = isUp
+                            ? val > 80
+                              ? "bg-[#7cd9ac]"
+                              : "bg-[#1a4db8]"
+                            : val < 20
+                              ? "bg-[#ffb4ab]"
+                              : "bg-[#303443]";
+                          const shadow =
+                            isUp && val > 60 ? "shadow-[0_0_8px_#7cd9ac]" : "";
+                          return (
+                            <div
+                              key={idx}
+                              className={`flex-1 rounded-t ${color} ${shadow} transition-all duration-500`}
+                              style={{ height: `${Math.max(10, val)}%` }}
+                            />
+                          );
+                        })
+                      ) : (
+                        <div className="w-full flex items-center justify-center rounded-lg border border-[#434653]/30 text-[10px] font-mono text-[#8d909e]">
+                          No price history
+                        </div>
+                      )}
                     </div>
 
                     <button
-                      onClick={() => navigate(`/terminal/${market.id}`)}
+                      onClick={() => navigate(`/analysis/${market.id}`)}
                       className="w-full cursor-pointer flex items-center justify-center gap-2 rounded-xl bg-[#1a1f2d] py-3 text-sm font-semibold transition-colors hover:bg-[#1a4db8] hover:text-[#b3c5ff]"
                     >
                       View Market

@@ -8,7 +8,7 @@ const DashboardLayout = () => {
 
   const mobileNav = [
     { name: "Markets", route: "/markets", icon: "grid_view" },
-    { name: "Terminal", route: "/terminal/latest", icon: "monitoring" },
+    { name: "Terminal", route: "/analysis", icon: "monitoring" },
     { name: "Data", route: "/quant-lab", icon: "analytics" },
     { name: "Wallet", route: "/vault", icon: "wallet" },
   ];
