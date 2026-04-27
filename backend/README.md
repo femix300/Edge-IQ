@@ -104,6 +104,41 @@ Server will be available at: `http://127.0.0.1:8000/`
 
 ## Testing Endpoints
 
+
+## API Documentation (drf-spectacular)
+
+EdgeIQ uses [drf-spectacular](https://drf-spectacular.readthedocs.io/) to auto-generate interactive OpenAPI 3 documentation from the Django REST Framework codebase.
+
+### Live Documentation URLs
+
+Once the server is running (`python manage.py runserver`), open your browser to:
+
+| URL | Description |
+|-----|-------------|
+| `http://127.0.0.1:8000/api/schema/` | Raw OpenAPI 3 schema (JSON/YAML) |
+| `http://127.0.0.1:8000/api/docs/swagger/` | **Swagger UI** — interactive, try endpoints live |
+| `http://127.0.0.1:8000/api/docs/redoc/` | **ReDoc** — clean, professional reference docs |
+
+### Swagger UI Features
+
+- **Browse all endpoints** grouped by app (Markets, Signals, Portfolio, Backtesting)
+- **View request/response schemas** auto-detected from DRF serializers
+- **Authenticate** — click "Authorize" and enter your token (`Token &lt;your_key&gt;`) to test protected endpoints
+- **Try it out** — execute real API calls directly from the browser
+- **Export** — download the OpenAPI spec for Postman or frontend SDK generation
+
+### Generating a Static Schema
+
+To export the schema for CI/CD, frontend generation, or Postman import:
+
+```bash
+# JSON
+python manage.py spectacular --file schema.json
+
+# YAML
+python manage.py spectacular --file schema.yml --format openapi
+
+
 ### Using cURL
 
 #### 1. Scan Markets from Bayse
