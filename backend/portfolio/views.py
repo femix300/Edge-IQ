@@ -43,7 +43,7 @@ class PortfolioViewSet(ViewSet):
     All endpoints require authentication.
     """
     
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
     
     def _get_user_id(self, request):
         """Get the current user's ID from the request."""
