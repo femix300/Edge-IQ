@@ -91,9 +91,7 @@ const HomePage = () => {
       <div className="absolute top-0 left-0 right-0 z-50 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         <nav className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-[#00d4ff] flex items-center justify-center">
-              <Radar className="w-5 h-5 text-[#0a0e17]" />
-            </div>
+            <img src="/edgeiq_logo.png" alt="EdgeIQ Logo" className="w-8 h-8 rounded-lg object-cover" />
             <span className="font-bold text-xl text-[#dee2f5]">EdgeIQ</span>
           </div>
           <div className="flex items-center gap-3">
