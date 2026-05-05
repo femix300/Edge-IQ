@@ -45,16 +45,15 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased font-sans;
     background-color: #0a0e17;
     color: #dee2f5;
-    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   }
 }
 
 @layer utilities {
   .font-mono-num {
-    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+    @apply font-mono;
     font-variant-numeric: tabular-nums;
   }
 }

@@ -37,13 +37,11 @@ import {
   Menu,
   X,
   Zap,
-  Home,
   User,
   LogOut,
 } from "lucide-react";
 
 const navItems = [
-  { name: "Home", route: "/home", icon: Home },
   { name: "Markets", route: "/markets", icon: Grid3X3 },
   { name: "Signals", route: "/signals", icon: Zap },
   { name: "Portfolio", route: "/portfolio", icon: Wallet },
@@ -56,6 +54,7 @@ const DashboardLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const [sidebarHovered, setSidebarHovered] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
@@ -68,15 +67,25 @@ const DashboardLayout = () => {
 
   return (
     <div className="flex min-h-screen bg-[#0a0e17]">
-      <aside className="hidden md:flex flex-col w-64 bg-[#0f1420] border-r border-[#1a2030] fixed h-screen z-40">
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#00d4ff] flex items-center justify-center">
+      {/* Desktop Sidebar (Hover Activated) */}
+      <aside 
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => setSidebarHovered(false)}
+        className={`hidden md:flex flex-col bg-[#0f1420] border-r border-[#1a2030] fixed h-screen z-40 transition-all duration-300 ease-in-out ${
+          sidebarHovered ? "w-64" : "w-16"
+        }`}
+      >
+        <div 
+          onClick={() => navigate("/")}
+          className={`p-4 flex items-center gap-3 transition-all cursor-pointer hover:opacity-80 ${sidebarHovered ? "px-6" : "justify-center px-0"}`}
+        >
+          <div className="w-8 h-8 rounded-lg bg-[#00d4ff] flex items-center justify-center flex-shrink-0 shadow-[0_0_15px_rgba(0,212,255,0.2)]">
             <Radar className="w-5 h-5 text-[#0a0e17]" />
           </div>
-          <span className="font-bold text-lg text-[#dee2f5] tracking-tight">EdgeIQ</span>
+          {sidebarHovered && <span className="font-bold text-lg text-[#dee2f5] tracking-tight whitespace-nowrap">EdgeIQ</span>}
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-2 py-4 space-y-1 overflow-hidden">
           {navItems.map((item) => {
             const isActive = location.pathname === item.route || location.pathname.startsWith(`${item.route}/`);
             const Icon = item.icon;
@@ -84,34 +93,40 @@ const DashboardLayout = () => {
               <button
                 key={item.route}
                 onClick={() => navigate(item.route)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                className={`w-full flex items-center gap-3 py-3 rounded-lg text-sm font-medium transition-all ${
+                  sidebarHovered ? "px-4" : "justify-center px-0"
+                } ${
                   isActive
                     ? "bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20"
                     : "text-[#8b92a8] hover:text-[#dee2f5] hover:bg-[#1a2030]"
                 }`}
               >
-                <Icon className="w-4 h-4" />
-                {item.name}
+                <Icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-[#00d4ff]" : ""}`} />
+                {sidebarHovered && <span className="whitespace-nowrap">{item.name}</span>}
               </button>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-[#1a2030]">
+        <div className={`p-2 border-t border-[#1a2030] transition-all ${sidebarHovered ? "p-4" : "flex flex-col items-center"}`}>
           <button
             onClick={() => setProfileOpen(!profileOpen)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#1a2030] transition-all"
+            className={`w-full flex items-center gap-3 py-2 rounded-lg hover:bg-[#1a2030] transition-all ${
+              sidebarHovered ? "px-3" : "justify-center px-0"
+            }`}
           >
-            <div className="w-8 h-8 rounded-full bg-[#00d4ff]/10 border border-[#00d4ff]/30 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-[#00d4ff]/10 border border-[#00d4ff]/30 flex items-center justify-center flex-shrink-0">
               <User className="w-4 h-4 text-[#00d4ff]" />
             </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-sm text-[#dee2f5] truncate">{user?.displayName || user?.username || "Trader"}</p>
-              <p className="text-xs text-[#5a6070] truncate">{user?.email || ""}</p>
-            </div>
+            {sidebarHovered && (
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-sm text-[#dee2f5] truncate">{user?.displayName || user?.username || "Trader"}</p>
+                <p className="text-xs text-[#5a6070] truncate">{user?.email || ""}</p>
+              </div>
+            )}
           </button>
 
-          {profileOpen && (
+          {profileOpen && sidebarHovered && (
             <div className="mt-2 space-y-1">
               <button
                 onClick={() => { navigate("/profile"); setProfileOpen(false); }}
@@ -130,13 +145,16 @@ const DashboardLayout = () => {
             </div>
           )}
 
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1a2030]/50 mt-3">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1a2030]/50 mt-3 transition-all ${
+            sidebarHovered ? "opacity-100" : "opacity-0 invisible"
+          }`}>
             <div className="w-2 h-2 rounded-full bg-[#00ff88] animate-pulse-dot" />
-            <span className="text-xs text-[#8b92a8]">Live Data</span>
+            <span className="text-xs text-[#8b92a8] whitespace-nowrap">Live Data</span>
           </div>
         </div>
       </aside>
 
+      {/* Mobile Nav */}
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-[#0f1420] border-b border-[#1a2030] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md bg-[#00d4ff] flex items-center justify-center">
@@ -187,7 +205,8 @@ const DashboardLayout = () => {
         </div>
       )}
 
-      <main className="flex-1 md:ml-64 pt-14 md:pt-0 min-h-screen">
+      {/* Main Content */}
+      <main className={`flex-1 transition-all duration-300 ease-in-out md:ml-16 pt-14 md:pt-0 min-h-screen`}>
         <div className="p-4 md:p-8 max-w-[1440px] mx-auto">
           <ErrorBoundary key={location.pathname}><Outlet /></ErrorBoundary>
         </div>

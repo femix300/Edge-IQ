@@ -55,7 +55,6 @@ function App() {
           {/* Protected routes — with sidebar */}
           <Route element={<ProtectedRoute />}>
             <Route element={<DashboardLayout />}>
-              <Route path="/home" element={<HomePage />} />
               <Route path="/markets" element={<MarketsExplorer />} />
               <Route path="/signals" element={<SignalFeed />} />
               <Route path="/market/:id" element={<MarketDeepDive />} />
