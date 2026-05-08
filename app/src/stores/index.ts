@@ -30,6 +30,7 @@ interface MarketState {
     timeRange: string;
     search: string;
     minLiquidity: boolean;
+    source: string;
   };
   setMarkets: (markets: Market[]) => void;
   setFilteredMarkets: (markets: Market[]) => void;
@@ -63,6 +64,7 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     timeRange: "all",
     search: "",
     minLiquidity: false,
+    source: "",
   },
   setMarkets: (markets) => {
     set({ markets });
@@ -100,6 +102,10 @@ export const useMarketStore = create<MarketState>((set, get) => ({
 
     if (filters.minLiquidity) {
       result = result.filter((m) => m.liquidity > 5000);
+    }
+
+    if (filters.source) {
+      result = result.filter((m) => m.source === filters.source);
     }
 
     switch (filters.sortBy) {

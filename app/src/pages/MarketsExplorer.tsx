@@ -13,7 +13,7 @@ import { Loader2,
   Volume2,
   TrendingUp,
   X,
-  Droplets,
+  
   BrainCircuit,
 } from "lucide-react";
 import type { Market } from "@/types";
@@ -52,15 +52,9 @@ const formatProb = (prob: number) => {
   return `${Number(prob).toFixed(1)}%`;
 };
 
-const getLiquidityLabel = (liq: number) => {
-  if (liq > 50000) return { label: "Deep", color: "text-[#00ff88]" };
-  if (liq > 10000) return { label: "Moderate", color: "text-[#ffa502]" };
-  return { label: "Thin", color: "text-[#ff4757]" };
-};
 
 const MarketCard = memo(({ market, onClick, onDeepDive, hasEdge }: { market: Market; onClick: () => void; onDeepDive?: () => void; hasEdge?: boolean }) => {
   const cat = CATEGORY_CONFIG.find((c) => c.key === market.category) || CATEGORY_CONFIG[4];
-  const liq = getLiquidityLabel(market.liquidity);
   const prob = market.implied_probability || (market.current_price || 0) * 100;
 
   return (
@@ -74,12 +68,23 @@ const MarketCard = memo(({ market, onClick, onDeepDive, hasEdge }: { market: Mar
         </div>
       )}
       <div className="flex items-start justify-between mb-3">
-        <span
-          className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
-          style={{ backgroundColor: `${cat.color}15`, color: cat.color }}
-        >
-          {cat.label}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+              market.source === "polymarket"
+                ? "bg-[#9b59b6]/15 text-[#9b59b6]"
+                : "bg-[#00d4ff]/10 text-[#00d4ff]"
+            }`}
+          >
+            {market.source === "polymarket" ? "Polymarket" : "Bayse"}
+          </span>
+          <span
+            className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+            style={{ backgroundColor: `${cat.color}15`, color: cat.color }}
+          >
+            {cat.label}
+          </span>
+        </div>
       </div>
       <h3 className="font-semibold text-[#dee2f5] text-sm leading-snug line-clamp-2 min-h-[40px] mb-3">
         {market.title}
@@ -100,10 +105,7 @@ const MarketCard = memo(({ market, onClick, onDeepDive, hasEdge }: { market: Mar
             <Volume2 className="w-3 h-3" />
             {formatVolume(market.liquidity || 0)}
           </span>
-          <span className={`flex items-center gap-1 ${liq.color}`}>
-            <Droplets className="w-3 h-3" />
-            {liq.label}
-          </span>
+
         </div>
         <span className="flex items-center gap-1">
           <Clock className="w-3 h-3" />
@@ -132,6 +134,9 @@ const MarketRow = memo(({ market, onClick, onDeepDive, hasEdge }: { market: Mark
     >
       <td className="py-3 px-4">
         <div className="flex items-center gap-2">
+          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${market.source === "polymarket" ? "bg-[#9b59b6]/15 text-[#9b59b6]" : "bg-[#00d4ff]/10 text-[#00d4ff]"}`}>
+            {market.source === "polymarket" ? "Polymarket" : "Bayse"}
+          </span>
           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: `${cat.color}15`, color: cat.color }}>
             {cat.label}
           </span>
@@ -184,12 +189,12 @@ const MarketsExplorer = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getMarkets({ status: "open", page_size: 100 });
+      const res = await getMarkets({ status: "open", page_size: 200 });
       const seen = new Set<string>();
       const enriched = (res.results || [])
         .filter((m) => {
-          if (seen.has(m.bayse_event_id)) return false;
-          seen.add(m.bayse_event_id);
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
           return true;
         })
         .map((m) => {
@@ -222,7 +227,7 @@ const MarketsExplorer = () => {
   ].filter(Boolean).length;
 
   const clearFilters = () => {
-    setFilters({ categories: [], status: "open", search: "", minLiquidity: false, sortBy: "liquidity" });
+    setFilters({ categories: [], status: "open", search: "", minLiquidity: false, sortBy: "liquidity", source: "" });
   };
 
   const paginated = filteredMarkets.slice(0, page * 20);
@@ -240,7 +245,7 @@ const MarketsExplorer = () => {
             Markets Explorer
           </h1>
           <p className="text-sm text-[#8b92a8] mt-1">
-            {markets.length} active Bayse markets · Browse the full landscape
+            {markets.filter(m => m.source === "bayse").length} Bayse · {markets.filter(m => m.source === "polymarket").length} Polymarket · Browse the full landscape
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -345,6 +350,28 @@ const MarketsExplorer = () => {
                 </button>
               ))}
             </div>
+
+            {/* Source Filter */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-xs text-[#8b92a8] mr-1">Source:</span>
+              {[
+                { key: "", label: "All" },
+                { key: "bayse", label: "Bayse" },
+                { key: "polymarket", label: "Polymarket" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setFilters({ source: opt.key })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    filters.source === opt.key
+                      ? "bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/30"
+                      : "bg-[#0a0e17] text-[#8b92a8] border border-[#1a2030] hover:text-[#dee2f5]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             {/* Sort & Liquidity */}
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-xs text-[#8b92a8]">Sort by:</span>
@@ -425,9 +452,9 @@ const MarketsExplorer = () => {
             <MarketCard
               key={market.id}
               market={market}
-              hasEdge={signalMarketIds.has(market.bayse_event_id)}
-              onClick={() => navigate(`/market/${market.bayse_event_id}`, { state: { staticOnly: true } })}
-              onDeepDive={() => navigate(`/market/${market.bayse_event_id}`)}
+              hasEdge={signalMarketIds.has(market.bayse_event_id ?? "")}
+              onClick={() => navigate(`/market/${market.id}`, { state: { staticOnly: true } })}
+              onDeepDive={() => navigate(`/market/${market.id}`, { state: { staticOnly: false } })}
             />
           ))}
         </div>
@@ -449,9 +476,9 @@ const MarketsExplorer = () => {
                 <MarketRow
                   key={market.id}
                   market={market}
-                  hasEdge={signalMarketIds.has(market.bayse_event_id)}
-                  onClick={() => navigate(`/market/${market.bayse_event_id}`, { state: { staticOnly: true } })}
-              onDeepDive={() => navigate(`/market/${market.bayse_event_id}`)}
+                  hasEdge={signalMarketIds.has(market.bayse_event_id ?? "")}
+                  onClick={() => navigate(`/market/${market.id}`, { state: { staticOnly: true } })}
+              onDeepDive={() => navigate(`/market/${market.id}`, { state: { staticOnly: false } })}
                 />
               ))}
             </tbody>

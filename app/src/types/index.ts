@@ -5,8 +5,9 @@
 
 export interface Market {
   id: string;
-  bayse_event_id: string;
-  bayse_market_id: string;
+  bayse_event_id?: string;
+  bayse_market_id?: string;
+  source?: string;
   title: string;
   description?: string;
   category: 'crypto' | 'sports' | 'politics' | 'entertainment' | 'other';
@@ -59,6 +60,7 @@ export interface Signal {
   market_id: string;
   market_title: string;
   market_event_id: string;
+  source?: string;
   category?: string;
   direction: 'BUY' | 'SELL' | 'WAIT';
   edge_score: number;

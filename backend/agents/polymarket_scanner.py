@@ -147,12 +147,14 @@ def calculate_signal_potential(volume, liquidity, closes_at):
 
     if closes_at:
         time_remaining_hours = (closes_at - timezone.now()).total_seconds() / 3600
-        if 24 <= time_remaining_hours <= 168:
-            time_score = 30
+        if 0 < time_remaining_hours <= 24:
+            time_score = 30   # closing within 24h — highest priority
+        elif time_remaining_hours <= 48:
+            time_score = 28   # closing within 48h — very high
+        elif time_remaining_hours <= 168:
+            time_score = 20   # closing within a week
         elif time_remaining_hours > 168:
-            time_score = 20
-        elif time_remaining_hours > 0:
-            time_score = max(0, time_remaining_hours / 24 * 30)
+            time_score = 10   # long-dated — low priority
         else:
             time_score = 0
         score += time_score

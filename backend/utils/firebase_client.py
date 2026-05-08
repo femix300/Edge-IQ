@@ -129,6 +129,7 @@ class Collection:
     QUANT_METRICS = "quant_metrics"
     AI_ANALYSES = "ai_analyses"
     SIGNALS = "signals"
+    PREDICTIONS = "edgeiq_predictions"
     TRADES = "trades"
     USER_PROFILES = "user_profiles"
     PORTFOLIO_SNAPSHOTS = "portfolio_snapshots"

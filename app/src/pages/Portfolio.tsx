@@ -34,7 +34,7 @@ const Portfolio = () => {
   const [resolveToast, setResolveToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
-    const fetch = async () => {
+    const loadData = async () => {
       setLoading(true);
       try {
         const [profileRes, tradesRes, analyticsRes] = await Promise.all([
@@ -49,7 +49,7 @@ const Portfolio = () => {
       getQPI().then(res => { if (res?.success) setQpi(res.qpi); }).catch(() => {});
       setLoading(false);
     };
-    fetch();
+    loadData();
   }, []);
 
   const handleResolve = useCallback(async (tradeId: string, outcome: "YES" | "NO") => {
@@ -224,12 +224,16 @@ const Portfolio = () => {
             {winLossData.some((d) => d.value > 0) ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={winLossData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value">
+                  <Pie data={winLossData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={4} dataKey="value" isAnimationActive={false} stroke="none">
                     {winLossData.map((_, i) => (
                       <Cell key={i} fill={COLORS[i]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: "#131a2b", border: "1px solid #1a2030", borderRadius: 8 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#131a2b", border: "1px solid #1a2030", borderRadius: 8, fontSize: 12 }}
+                    formatter={(value: number, name: string) => [value, name]}
+                    itemStyle={{ color: "#dee2f5" }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             ) : (

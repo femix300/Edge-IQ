@@ -136,6 +136,7 @@ def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
                     "signal_potential_score": signal_score,
                     "last_scanned_at": timezone.now().isoformat(),
                     "created_at": timezone.now().isoformat(),
+                    "source": "bayse",
                 }
 
                 # Add to batch list instead of writing immediately

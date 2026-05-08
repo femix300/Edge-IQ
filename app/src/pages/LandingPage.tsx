@@ -33,8 +33,7 @@ const LandingPage = () => {
             <span className="text-[#00d4ff]">Prediction Markets</span>
           </h1>
           <p className="text-lg text-[#8b92a8] mb-8 leading-relaxed">
-            EdgeIQ detects gaps between market-implied probabilities and AI-estimated true probabilities.
-            Surface actionable trade signals with Expected Value calculations and Kelly Criterion stake sizing.
+            EdgeIQ aggregates Bayse and Polymarket prediction markets, detects gaps between market-implied probabilities and AI-estimated true probabilities, and surfaces actionable trade signals with Expected Value calculations and Kelly Criterion stake sizing.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             {isAuthenticated ? (
@@ -74,7 +73,7 @@ const LandingPage = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8 border-t border-[#1a2030] text-center">
-        <p className="text-xs text-[#5a6070]">Built for Build With AI OAU 2026 Hackathon · Quantitative Finance Track · GDG × Bayse Markets</p>
+        <p className="text-xs text-[#5a6070]">Built for Build With AI OAU 2026 Hackathon · Quantitative Finance Track · GDG × Bayse & Polymarket</p>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+from .exchange_rate import exchange_rate
 """
 URL routing for Markets API
 """
@@ -13,4 +14,5 @@ urlpatterns = [
     # SSE streaming endpoint (must come before router to avoid pk conflicts)
     re_path(r'^(?P<pk>[^/]+)/analyze_stream/$', sse_analyze_view, name='market-analyze-stream'),
     path('', include(router.urls)),
+    path('exchange-rate/', exchange_rate),
 ]

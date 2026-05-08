@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useCalibrationStore } from "@/stores";
-import { getCalibrationData, getAccuracyMetrics, getPredictionStats, resolvePredictions, manualResolvePrediction, unresolvePredictions } from "@/lib/api";
+import { getCalibrationData, getAccuracyMetrics, getPredictionStats, resolvePredictions, manualResolvePrediction } from "@/lib/api";
 import { Target, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 
 const Calibration = () => {
@@ -8,7 +8,6 @@ const Calibration = () => {
   const [tooltip, setTooltip] = useState<{x: number, y: number, p: any} | null>(null);
   const [predStats, setPredStats] = useState<any>(null);
   const [resolving, setResolving] = useState(false);
-  const [showPredictions, setShowPredictions] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -30,12 +29,14 @@ const Calibration = () => {
     loadData();
   }, []);
 
-  const chartData = calibrationData?.calibration_points?.map((p: any) => ({
+  const chartData = calibrationData?.calibration_points?.map((p) => ({
     predicted: p.predicted,
     actual: p.actual,
     count: p.count,
     bin: p.bin,
   })) || [];
+
+
 
   if (loading) {
     return (
@@ -57,6 +58,7 @@ const Calibration = () => {
         </p>
       </div>
 
+      {/* Metrics */}
       {accuracyMetrics && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-[#131a2b] rounded-lg p-4 border border-[#1a2030]">
@@ -78,6 +80,7 @@ const Calibration = () => {
         </div>
       )}
 
+      {/* Calibration Chart */}
       <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-6">
         <h3 className="text-sm font-semibold text-[#dee2f5] mb-4">
           Predicted Probability vs. Actual Outcome Frequency
@@ -136,35 +139,28 @@ const Calibration = () => {
         </div>
       </div>
 
+      {/* EdgeIQ Prediction Tracker */}
       <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-sm font-semibold text-[#dee2f5]">EdgeIQ Prediction Tracker</h3>
             <p className="text-xs text-[#5a6070] mt-1">Real predictions made by EdgeIQ's 4-agent pipeline — tracked as markets resolve</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={async () => {
-                setResolving(true);
-                await unresolvePredictions();
-                await resolvePredictions();
-                const res = await getPredictionStats();
-                if (res.success) setPredStats(res);
-                setResolving(false);
-              }}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#1a2030] text-[#8b92a8] hover:text-[#00d4ff] border border-[#1a2030] hover:border-[#00d4ff] transition-colors"
-            >
-              {resolving ? "Resolving..." : "↻ Sync Outcomes"}
-            </button>
-            <button
-              onClick={() => setShowPredictions(p => !p)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#1a2030] text-[#8b92a8] hover:text-[#dee2f5] border border-[#1a2030] transition-colors"
-            >
-              {showPredictions ? "▲ Hide" : "▼ Show"}
-            </button>
-          </div>
+          <button
+            onClick={async () => {
+              setResolving(true);
+              await resolvePredictions();
+              const res = await getPredictionStats();
+              if (res.success) setPredStats(res);
+              setResolving(false);
+            }}
+            className="text-xs px-3 py-1.5 rounded-lg bg-[#1a2030] text-[#8b92a8] hover:text-[#00d4ff] border border-[#1a2030] hover:border-[#00d4ff] transition-colors"
+          >
+            {resolving ? "Resolving..." : "↻ Sync Outcomes"}
+          </button>
         </div>
 
+        {/* Stats row */}
         <div className="grid grid-cols-4 gap-3 mb-5">
           {[
             { label: "Total Predictions", value: predStats?.stats?.total ?? 0, color: "#dee2f5" },
@@ -179,57 +175,57 @@ const Calibration = () => {
           ))}
         </div>
 
-        {showPredictions && (
-          predStats?.recent_predictions?.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-[#5a6070] border-b border-[#1a2030]">
-                    <th className="text-left pb-2 pr-4">Market</th>
-                    <th className="text-right pb-2 pr-4">EdgeIQ</th>
-                    <th className="text-right pb-2 pr-4">Crowd</th>
-                    <th className="text-center pb-2 pr-4">Predicted</th>
-                    <th className="text-center pb-2">Status</th>
+        {/* Recent predictions table */}
+        {predStats?.recent_predictions?.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-[#5a6070] border-b border-[#1a2030]">
+                  <th className="text-left pb-2 pr-4">Market</th>
+                  <th className="text-right pb-2 pr-4">EdgeIQ</th>
+                  <th className="text-right pb-2 pr-4">Crowd</th>
+                  <th className="text-center pb-2 pr-4">Predicted</th>
+                  <th className="text-center pb-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {predStats.recent_predictions.map((p: any, i: number) => (
+                  <tr key={i} className="border-b border-[#1a2030] hover:bg-[#0a0e17]">
+                    <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">{p.market_title}</td>
+                    <td className="py-2 pr-4 text-right text-[#00d4ff]">{p.ai_probability}%</td>
+                    <td className="py-2 pr-4 text-right text-[#8b92a8]">{p.market_probability}%</td>
+                    <td className="py-2 pr-4 text-center">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.predicted_outcome === 'YES' ? 'bg-[#00ff8820] text-[#00ff88]' : 'bg-[#ff4d4d20] text-[#ff4d4d]'}`}>
+                        {p.predicted_outcome}
+                      </span>
+                    </td>
+                    <td className="py-2 text-center">
+                      {p.status === 'pending' ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={async () => { await manualResolvePrediction(p.id, "YES"); const res = await getPredictionStats(); if (res.success) setPredStats(res); }} className="px-2 py-0.5 rounded text-[10px] bg-[#00ff8815] text-[#00ff88] hover:bg-[#00ff8830] border border-[#00ff8840]">YES</button>
+                          <button onClick={async () => { await manualResolvePrediction(p.id, "NO"); const res = await getPredictionStats(); if (res.success) setPredStats(res); }} className="px-2 py-0.5 rounded text-[10px] bg-[#ff4d4d15] text-[#ff4d4d] hover:bg-[#ff4d4d30] border border-[#ff4d4d40]">NO</button>
+                        </div>
+                      ) : p.was_correct ? (
+                        <span className="px-2 py-0.5 rounded text-[10px] bg-[#00ff8820] text-[#00ff88]">✓ Correct</span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] bg-[#ff4d4d20] text-[#ff4d4d]">✗ Wrong</span>
+                      )}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {predStats.recent_predictions.map((p: any, i: number) => (
-                    <tr key={i} className="border-b border-[#1a2030] hover:bg-[#0a0e17]">
-                      <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">{p.market_title}</td>
-                      <td className="py-2 pr-4 text-right text-[#00d4ff]">{p.ai_probability}%</td>
-                      <td className="py-2 pr-4 text-right text-[#8b92a8]">{p.market_probability}%</td>
-                      <td className="py-2 pr-4 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.predicted_outcome === 'YES' ? 'bg-[#00ff8820] text-[#00ff88]' : 'bg-[#ff4d4d20] text-[#ff4d4d]'}`}>
-                          {p.predicted_outcome}
-                        </span>
-                      </td>
-                      <td className="py-2 text-center">
-                        {p.status === 'pending' ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={async () => { await manualResolvePrediction(p.id, "YES"); const res = await getPredictionStats(); if (res.success) setPredStats(res); }} className="px-2 py-0.5 rounded text-[10px] bg-[#00ff8815] text-[#00ff88] hover:bg-[#00ff8830] border border-[#00ff8840]">YES</button>
-                            <button onClick={async () => { await manualResolvePrediction(p.id, "NO"); const res = await getPredictionStats(); if (res.success) setPredStats(res); }} className="px-2 py-0.5 rounded text-[10px] bg-[#ff4d4d15] text-[#ff4d4d] hover:bg-[#ff4d4d30] border border-[#ff4d4d40]">NO</button>
-                          </div>
-                        ) : p.was_correct ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-[#00ff8820] text-[#00ff88]">✓ Correct</span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-[#ff4d4d20] text-[#ff4d4d]">✗ Wrong</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-10 text-[#5a6070]">
-              <Target className="w-8 h-8 mb-2 opacity-40" />
-              <p className="text-sm">No predictions yet</p>
-              <p className="text-xs mt-1">Run a Deep Dive on any market to start building EdgeIQ's track record</p>
-            </div>
-          )
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-10 text-[#5a6070]">
+            <Target className="w-8 h-8 mb-2 opacity-40" />
+            <p className="text-sm">No predictions yet</p>
+            <p className="text-xs mt-1">Run a Deep Dive on any market to start building EdgeIQ's track record</p>
+          </div>
         )}
       </div>
 
+      {/* Interpretation */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-5">
           <div className="flex items-center gap-2 mb-3">

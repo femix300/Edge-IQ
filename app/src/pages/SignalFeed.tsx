@@ -41,8 +41,13 @@ const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => v
       onClick={onClick}
       className="group relative bg-[#131a2b] border border-[#1a2030] rounded-xl p-5 hover:border-[#00d4ff]/30 hover:shadow-[0_0_20px_rgba(0,212,255,0.08)] transition-all cursor-pointer"
     >
-      {/* Category Badge */}
-      <div className="absolute top-3 left-3">
+      {/* Source + Category Badges */}
+      <div className="absolute top-3 left-3 flex items-center gap-1.5">
+        <span
+          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${(signal.source === "polymarket" || signal.market_event_id?.startsWith("poly_")) ? "bg-[#9b59b6]/15 text-[#9b59b6]" : "bg-[#00d4ff]/10 text-[#00d4ff]"}`}
+        >
+          {(signal.source === "polymarket" || signal.market_event_id?.startsWith("poly_")) ? "Polymarket" : "Bayse"}
+        </span>
         <span
           className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
           style={{ backgroundColor: `${catColor}15`, color: catColor }}

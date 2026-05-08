@@ -96,31 +96,81 @@ class PolymarketClient:
     #  Internal helpers                                                    #
     # ------------------------------------------------------------------ #
 
-    def _map_category(self, tags):
+    def _map_category(self, tags, title=""):
         """
-        Map Polymarket tags array to EdgeIQ internal categories.
-        Tags can be a list of strings OR list of dicts with a 'label' key.
+        Map Polymarket tags/title to EdgeIQ internal categories.
+        Tags always take priority. Title inference only used when tags are empty or generic.
         """
-        if not tags:
-            return 'other'
-
-        # Normalise to list of lowercase strings
-        if tags and isinstance(tags[0], dict):
-            tag_strings = [t.get('label', '') for t in tags]
-        else:
-            tag_strings = tags
-
+        tag_strings = []
+        if tags:
+            if isinstance(tags[0], dict):
+                tag_strings = [t.get('label', '') for t in tags]
+            else:
+                tag_strings = list(tags)
         tags_lower = [str(t).lower() for t in tag_strings]
+        title_lower = str(title).lower()
 
-        if any(t in tags_lower for t in ['politics', 'election', 'elections', 'government']):
-            return 'politics'
-        if any(t in tags_lower for t in ['sports', 'soccer', 'football', 'basketball', 'nba', 'nfl']):
-            return 'sports'
-        if any(t in tags_lower for t in ['crypto', 'cryptocurrency', 'bitcoin', 'ethereum', 'defi']):
-            return 'crypto'
-        if any(t in tags_lower for t in ['entertainment', 'pop culture', 'awards', 'oscars', 'music']):
-            return 'entertainment'
+        POLITICS = ['politics', 'election', 'elections', 'government', 'president', 'senate',
+                    'congress', 'vote', 'trump', 'biden', 'democrat', 'democratic', 'republican',
+                    'ceasefire', 'war', 'nato', 'macron', 'putin', 'zelensky', 'minister',
+                    'party', 'resign', 'nomination', 'xi jinping', 'jinping', 'kamala',
+                    'harris', 'pritzker', 'whitmer', 'ocasio', 'warnock', 'shapiro',
+                    'ossoff', 'raimondo', 'cuban', 'mark cuban']
+        SPORTS   = ['sports', 'soccer', 'football', 'basketball', 'nba', 'nfl', 'nhl', 'mlb',
+                    'stanley cup', 'world cup', 'super bowl', 'championship', 'league', 'playoffs',
+                    'fifa', 'tennis', 'golf', 'ufc', 'boxing', 'mls', 'formula', 'f1',
+                    'nba finals', 'nhl stanley', 'fifa world', 'win the 2026', 'win the 2027',
+                    'win the 2028', 'win the nba', 'win the nhl', 'win the nfl', 'win the mlb',
+                    'lakers', 'celtics', 'warriors', 'knicks', 'heat', 'mavericks', 'nuggets',
+                    'pacers', 'thunder', 'timberwolves', 'pistons', 'spurs', 'grizzlies', 'rockets',
+                    'clippers', 'suns', 'hawks', 'bulls', 'nets', 'sixers', 'raptors', 'bucks',
+                    'cavaliers', 'magic', 'hornets', 'wizards', 'blazers', 'jazz', 'pelicans',
+                    'oilers', 'maple leafs', 'rangers', 'bruins', 'canadiens', 'penguins',
+                    'lightning', 'capitals', 'wild', 'sabres', 'flames', 'canucks', 'senators',
+                    'jets', 'predators', 'blues', 'stars', 'avalanche', 'sharks', 'ducks',
+                    'devils', 'islanders', 'flyers', 'hurricanes', 'eagles', 'cowboys', 'patriots',
+                    'chiefs', 'bills', '49ers', 'packers', 'win the 2026', 'win the nba',
+                    'win the nhl', 'win the nfl', 'win the mlb']
+        CRYPTO   = ['crypto', 'cryptocurrency', 'bitcoin', 'ethereum', 'defi', 'btc', 'eth',
+                    'solana', 'token', 'blockchain', 'nft', 'coinbase', 'binance', 'microstrategy',
+                    'sec', 'etf', 'altcoin', 'stablecoin', 'kraken', 'ripple', 'xrp']
+        ENTERTAIN = ['entertainment', 'pop culture', 'awards', 'oscars', 'music', 'album',
+                     'movie', 'film', 'actor', 'singer', 'grammy', 'emmy', 'netflix', 'spotify',
+                     'rihanna', 'taylor swift', 'beyonce', 'drake', 'carti', 'gta', 'video game',
+                     'box office', 'streaming', 'celebrity']
+        TECH      = ['openai', 'grok', 'xai', 'chatgpt', 'claude', 'gemini', 'llm', 'ai model',
+                     'artificial intelligence', 'released by', 'launch a', 'meta ai',
+                     'hyperliquid', 'airdrop', 'apple', 'google', 'microsoft', 'nvidia',
+                     'robotaxi', 'self-driving', 'starship', 'spacex', 'starlink']
+
+        rules = [(POLITICS, 'politics'), (SPORTS, 'sports'), (CRYPTO, 'crypto'), (ENTERTAIN, 'entertainment')]
+
+        # Tags always win
+        for keywords, category in rules:
+            if any(k in tags_lower for k in keywords):
+                return category
+
+        # Always fall back to title matching (tags often missing from child markets)
+        for keywords, category in rules:
+            if any(k in title_lower for k in keywords):
+                return category
         return 'other'
+
+
+    def _compute_time_remaining(self, end_date_str) -> float:
+        """Returns hours remaining until market closes. 9999 if unparseable."""
+        if not end_date_str:
+            return 9999.0
+        try:
+            from datetime import datetime, timezone
+            from dateutil import parser as dateparser
+            closes = dateparser.parse(end_date_str)
+            if closes.tzinfo is None:
+                closes = closes.replace(tzinfo=timezone.utc)
+            delta = closes - datetime.now(timezone.utc)
+            return max(round(delta.total_seconds() / 3600, 2), 0)
+        except Exception:
+            return 9999.0
 
     def _normalize_market(self, raw: dict) -> dict:
         """
@@ -149,6 +199,12 @@ class PolymarketClient:
 
         # YES price — outcomePrices[0] is always YES
         outcome_prices = raw.get('outcomePrices') or ['0.5', '0.5']
+        if isinstance(outcome_prices, str):
+            import json as _json
+            try:
+                outcome_prices = _json.loads(outcome_prices)
+            except Exception:
+                outcome_prices = ['0.5', '0.5']
         try:
             yes_price = float(outcome_prices[0])
         except (ValueError, TypeError, IndexError):
@@ -156,6 +212,12 @@ class PolymarketClient:
 
         # YES token ID — used for CLOB order book and price history calls
         clob_token_ids = raw.get('clobTokenIds') or []
+        if isinstance(clob_token_ids, str):
+            import json
+            try:
+                clob_token_ids = json.loads(clob_token_ids)
+            except Exception:
+                clob_token_ids = []
         yes_token_id = clob_token_ids[0] if clob_token_ids else None
 
         # Volumes — already USD floats from Gamma API
@@ -188,9 +250,9 @@ class PolymarketClient:
             'bayse_market_id': yes_token_id,
 
             # Content
-            'title': raw.get('question') or raw.get('title', 'Untitled'),
+            'title': raw.get('_event_title') or raw.get('question') or raw.get('title', 'Untitled'),
             'description': raw.get('description') or raw.get('groupItemTitle', ''),
-            'category': self._map_category(tags),
+            'category': self._map_category(raw.get('_event_tags') or tags, title=raw.get('_event_title') or raw.get('question') or raw.get('title', '')),
 
             # Price / probability
             'current_price': yes_price,
@@ -205,6 +267,7 @@ class PolymarketClient:
             'status': status,
             'opens_at': raw.get('startDate'),
             'closes_at': raw.get('endDate'),
+            'time_remaining': self._compute_time_remaining(raw.get('endDate')),
             'resolved_at': raw.get('resolutionTime') if is_closed else None,
 
             # Signal scoring — will be calculated by agents after scan
@@ -230,7 +293,7 @@ class PolymarketClient:
     def get_all_markets(self, limit=100) -> list:
         """
         Fetch open Polymarket markets and return normalized list.
-        GET /markets?closed=false&active=true&limit={limit}
+        GET /events?closed=false&active=true&limit={limit}
         """
         params = {
             'closed': 'false',
@@ -238,12 +301,12 @@ class PolymarketClient:
             'limit': min(limit, 100),
         }
 
-        cache_key = f"polymarket_markets_{limit}"
+        cache_key = f"polymarket_events_{limit}"
 
         try:
             raw_data = self._get_cached(
                 cache_key,
-                lambda: self._make_request(self.gamma_base_url, '/markets', params=params),
+                lambda: self._make_request(self.gamma_base_url, '/events', params=params),
                 timeout=60
             )
         except PolymarketAPIError as e:
@@ -255,19 +318,31 @@ class PolymarketClient:
             return []
 
         # Gamma API returns a list directly — guard against dict wrapper just in case
-        markets_list = raw_data if isinstance(raw_data, list) else raw_data.get('data', [])
+        events_list = raw_data if isinstance(raw_data, list) else raw_data.get('data', [])
 
         normalized = []
-        for raw_market in markets_list:
+        for event in events_list:
+            event_tags = event.get('tags') or []
+            event_category = event.get('category')
+            event_title = event.get('title') or ''
+            child_markets = event.get('markets') or []
+            child = next((m for m in child_markets if not m.get('closed')), child_markets[0] if child_markets else None)
+            if not child:
+                continue
+            child['_event_tags'] = event_tags
+            child['_event_category'] = event_category
+            child['_event_title'] = event_title
+            child['image'] = child.get('image') or event.get('image')
+            child['liquidity'] = child.get('liquidity') or event.get('liquidity') or 0
+            child['volume'] = child.get('volume') or event.get('volume') or 0
+            child['volume24hr'] = child.get('volume24hr') or event.get('volume24hr') or 0
             try:
-                normalized.append(self._normalize_market(raw_market))
+                normalized.append(self._normalize_market(child))
             except Exception as e:
-                logger.warning(
-                    f"Failed to normalize market {raw_market.get('conditionId', '?')}: {e}"
-                )
+                logger.warning(f"Failed to normalize event {event.get('id', '?')}: {e}")
                 continue
 
-        logger.info(f"Polymarket: fetched and normalized {len(normalized)} markets")
+        logger.info(f"Polymarket: fetched and normalized {len(normalized)} markets from events")
         return normalized
 
     def get_market_detail(self, condition_id: str) -> dict | None:
@@ -307,12 +382,12 @@ class PolymarketClient:
             logger.warning("get_price_history: missing condition_id or token_id")
             return []
 
-        # Last 30 days
+        # Last 7 days (Polymarket CLOB rejects intervals > ~10 days at 60min fidelity)
         end_ts = int(time.time())
-        start_ts = end_ts - (30 * 24 * 60 * 60)
+        start_ts = end_ts - (7 * 24 * 60 * 60)
 
         params = {
-            'market': condition_id,
+            'market': token_id,
             'startTs': start_ts,
             'endTs': end_ts,
             'fidelity': 60,  # hourly resolution

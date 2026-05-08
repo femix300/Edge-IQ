@@ -68,7 +68,9 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
 
     # 4. Calculate signal parameters using original field names
     current_price = Decimal(str(market.get("current_price", 0)))
-    implied_prob = Decimal(str(market.get("implied_probability", 50)))
+    _raw_implied = float(market.get("implied_probability", 50))
+    # Normalise: stored as fraction (0-1) → convert to percentage (0-100)
+    implied_prob = Decimal(str(_raw_implied * 100 if _raw_implied <= 1.0 else _raw_implied))
     
     # Use original field names from Firestore
     ai_prob = Decimal(str(ai.get("probability", implied_prob)))
@@ -80,16 +82,19 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
     edge = ai_prob - implied_prob
 
     # Expected value per naira staked
-    if edge > 0 and current_price > 0:
-        ev = (ai_prob / 100) * (1 / current_price) - 1
-    elif edge < 0 and current_price > 0:
-        ev = ((100 - ai_prob) / 100) * (1 / (1 - current_price)) - 1
-    else:
+    try:
+        if edge > 0 and current_price > 0:
+            ev = (ai_prob / 100) * (1 / current_price) - 1
+        elif edge < 0 and current_price > 0 and current_price < 1:
+            ev = ((100 - ai_prob) / 100) * (1 / (1 - current_price)) - 1
+        else:
+            ev = Decimal("0")
+    except Exception:
         ev = Decimal("0")
 
     # Kelly Criterion: f* = (bp - q) / b
     bankroll = Decimal(str(user_bankroll))
-    if current_price > 0 and edge != 0:
+    if current_price > 0 and current_price != Decimal('0') and edge != 0:
         b = (1 / current_price) - 1
         p = ai_prob / 100
         q = 1 - p
@@ -131,6 +136,33 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
 
     # 5. Archive any existing active signal for this market
     _archive_existing_signal(market_event_id)
+
+    # 5b. Save prediction to tracker (upsert — one prediction per market)
+    try:
+        from utils.firebase_client import Collection as _Collection
+        pred_id = f"{market_event_id}_{user_id}"  # deterministic — no duplicates
+        existing = fs.get(_Collection.PREDICTIONS, pred_id)
+        # Only save/update if not already resolved
+        if not existing or existing.get("status") == "pending":
+            prediction_doc = {
+                "user_id": user_id,
+                "market_id": market_event_id,
+                "market_title": market.get("title", ""),
+                "ai_probability": float(ai_prob.quantize(Decimal("0.01"))),
+                "market_probability": float(implied_prob.quantize(Decimal("0.01"))),
+                "predicted_outcome": "YES" if float(ai_prob) > 50 else "NO",
+                "status": existing.get("status", "pending") if existing else "pending",
+                "resolved_outcome": existing.get("resolved_outcome") if existing else None,
+                "was_correct": existing.get("was_correct") if existing else None,
+                "created_at": existing.get("created_at") if existing else timezone.now(),
+                "updated_at": timezone.now(),
+                "closes_at": market.get("closes_at"),
+                "source": market.get("source", "unknown"),
+            }
+            fs.set(_Collection.PREDICTIONS, pred_id, prediction_doc)
+            logger.info(f"Prediction upserted: {pred_id}")
+    except Exception as e:
+        logger.warning(f"Failed to save prediction: {e}")
 
     # 6. Write new signal to Firestore
     now = timezone.now()

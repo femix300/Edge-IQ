@@ -252,3 +252,7 @@ CSRF_TRUSTED_ORIGINS = [
 CSRF_TRUSTED_ORIGINS = ["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:3000", "http://127.0.0.1:8000"]
 CSRF_COOKIE_SECURE = False
 CSRF_COOKIE_HTTPONLY = False
+
+# Polymarket API URLs (no auth needed for reads)
+POLYMARKET_GAMMA_URL = config('POLYMARKET_GAMMA_URL', default='https://gamma-api.polymarket.com')
+POLYMARKET_CLOB_URL  = config('POLYMARKET_CLOB_URL',  default='https://clob.polymarket.com')

@@ -210,63 +210,36 @@ class SignalViewSet(ViewSet):
         Perfect calibration means when AI says 70%, outcomes happen 70% of the time.
         """
         try:
-            # Get resolved markets with AI predictions
-            resolved_markets = fs.query(
-                collection=Collection.MARKETS,
-                filters=[("status", "==", "resolved")],
-                limit=200
-            )
-            
-            # Create bins for probability ranges (0-10%, 10-20%, etc.)
-            bins = [i for i in range(0, 101, 10)]
-            bin_data = {}
-            for b in bins[:-1]:
-                bin_data[f"{b}-{b+10}%"] = {"count": 0, "wins": 0}
-            
-            for market in resolved_markets:
-                # Get AI analysis for this market
-                ai_analyses = fs.query(
-                    collection=Collection.AI_ANALYSES,
-                    filters=[("market_id", "==", market.get('bayse_event_id'))],
-                    order_by=("analyzed_at", True),
-                    limit=1
-                )
-                
-                if not ai_analyses:
-                    continue
-                
-                ai = ai_analyses[0]
-                predicted = ai.get('probability', 50)
-                actual = market.get('resolution', '').upper()
-                
-                # Determine which bin this prediction falls into
-                bin_index = min(int(predicted / 10), 9)
-                bin_key = f"{bin_index * 10}-{(bin_index + 1) * 10}%"
-                
-                bin_data[bin_key]["count"] += 1
-                if actual == "YES":
-                    bin_data[bin_key]["wins"] += 1
-            
-            # Calculate actual probabilities for each bin
+            from services.polymarket_resolved import fetch_resolved_markets
+            markets = fetch_resolved_markets(limit=300)
+
+            bin_data = {b: {"count": 0, "wins": 0} for b in range(0, 100, 10)}
+            for m in markets:
+                pct = m["yes_price_at_close"] * 100
+                bf = min(int(pct / 10) * 10, 90)
+                bin_data[bf]["count"] += 1
+                if m["winner"] == "YES":
+                    bin_data[bf]["wins"] += 1
+
             calibration_points = []
-            for bin_key, data in bin_data.items():
+            for bf, data in sorted(bin_data.items()):
                 if data["count"] > 0:
                     actual_prob = (data["wins"] / data["count"]) * 100
                     calibration_points.append({
-                        "bin": bin_key,
-                        "predicted": float(bin_key.split("-")[0]) + 5,
+                        "bin": f"{bf}-{bf+10}%",
+                        "predicted": bf + 5,
                         "actual": round(actual_prob, 1),
-                        "count": data["count"]
+                        "count": data["count"],
                     })
-            
-            # Create perfect line for reference (predicted = actual)
+
             perfect_line = [{"predicted": i, "actual": i} for i in range(0, 101, 10)]
-            
+            total = sum(d["count"] for d in bin_data.values())
+
             return Response({
                 "success": True,
                 "calibration_points": calibration_points,
                 "perfect_line": perfect_line,
-                "total_markets_analyzed": sum(d["count"] for d in bin_data.values())
+                "total_markets_analyzed": total,
             })
             
         except Exception as e:
@@ -285,36 +258,19 @@ class SignalViewSet(ViewSet):
         try:
             import math
             
-            resolved_markets = fs.query(
-                collection=Collection.MARKETS,
-                filters=[("status", "==", "resolved")],
-                limit=200
-            )
-            
+            from services.polymarket_resolved import fetch_resolved_markets
+            resolved_markets = fetch_resolved_markets(limit=300)
+
             total = 0
             correct = 0
             brier_score = 0
             log_loss = 0
             calibration_error = 0
-            
-            # For calibration error, we need bin data
-            bins = [i for i in range(0, 101, 10)]
-            bin_data = {f"{b}-{b+10}%": {"count": 0, "wins": 0} for b in bins[:-1]}
-            
+            bin_data = {f"{b}-{b+10}%": {"count": 0, "wins": 0} for b in range(0, 100, 10)}
+
             for market in resolved_markets:
-                ai_analyses = fs.query(
-                    collection=Collection.AI_ANALYSES,
-                    filters=[("market_id", "==", market.get('bayse_event_id'))],
-                    order_by=("analyzed_at", True),
-                    limit=1
-                )
-                
-                if not ai_analyses:
-                    continue
-                
-                ai = ai_analyses[0]
-                predicted = ai.get('probability', 50) / 100
-                actual = 1 if market.get('resolution', '').upper() == "YES" else 0
+                predicted = market["yes_price_at_close"]
+                actual = 1 if market["winner"] == "YES" else 0
                 
                 total += 1
                 

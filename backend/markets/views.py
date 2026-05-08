@@ -56,30 +56,54 @@ class MarketViewSet(viewsets.GenericViewSet):
         """GET /api/markets/?status=open&category=sports"""
         status_filter = request.query_params.get('status', 'open')
         category = request.query_params.get('category')
-        limit = int(request.query_params.get('page_size', 100))
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', 100))
 
         statuses = [s.strip() for s in status_filter.split(',') if s.strip()]
-        filters = []
-        if statuses:
-            filters.append(("status", "in", statuses))
-        if category:
-            filters.append(("category", "==", category))
 
-        markets = fs.query(
+        def build_filters(source):
+            f = []
+            if statuses:
+                if len(statuses) == 1:
+                    f.append(("status", "==", statuses[0]))
+                else:
+                    f.append(("status", "in", statuses))
+            if category:
+                f.append(("category", "==", category))
+            f.append(("source", "==", source))
+            return f
+
+        # Query each source separately so neither crowds out the other
+        bayse_markets = fs.query(
             collection=Collection.MARKETS,
-            filters=filters if filters else None,
+            filters=build_filters("bayse"),
             order_by=("signal_potential_score", True),
-            limit=limit,
+            limit=100,
+        )
+        poly_markets = fs.query(
+            collection=Collection.MARKETS,
+            filters=build_filters("polymarket"),
+            order_by=("signal_potential_score", True),
+            limit=100,
         )
 
-        # Enrich with time_remaining for frontend
-        for m in markets:
-            m["id"] = m.get("bayse_event_id", m.get("id", ""))
-            m["time_remaining_hours"] = m.get("time_remaining", 0)
+        # Merge, deduplicate by doc id
+        seen = set()
+        markets = []
+        for m in bayse_markets + poly_markets:
+            doc_id = m.get("bayse_event_id") or m.get("id", "")
+            if doc_id and doc_id not in seen:
+                seen.add(doc_id)
+                m["id"] = doc_id
+                m["time_remaining_hours"] = m.get("time_remaining") or m.get("time_remaining_hours") or 0
+                if not m.get("source"):
+                    m["source"] = "bayse"
+                markets.append(m)
 
-        # Manual pagination
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 20))
+        # Sort merged list by signal_potential_score descending
+        markets.sort(key=lambda m: float(m.get("signal_potential_score") or 0), reverse=True)
+
+        # Paginate
         start = (page - 1) * page_size
         end = start + page_size
         page_data = markets[start:end]
@@ -121,11 +145,16 @@ class MarketViewSet(viewsets.GenericViewSet):
             min_volume = float(request.data.get('min_volume', 0))
             min_liquidity = float(request.data.get('min_liquidity', 0))
 
-            markets = scan_markets(
-                max_results=max_results,
-                min_volume=min_volume,
-                min_liquidity=min_liquidity,
-            )
+            source = request.data.get('source', 'bayse')
+            if source == 'polymarket':
+                from agents.polymarket_scanner import scan_markets as poly_scan
+                markets = poly_scan(max_results=max_results)
+            else:
+                markets = scan_markets(
+                    max_results=max_results,
+                    min_volume=min_volume,
+                    min_liquidity=min_liquidity,
+                )
 
             return Response({
                 "success": True,
@@ -203,7 +232,7 @@ class MarketViewSet(viewsets.GenericViewSet):
             if eid not in seen:
                 seen.add(eid)
                 m["id"] = eid
-                m["time_remaining_hours"] = m.get("time_remaining", 0)
+                m["time_remaining_hours"] = m.get("time_remaining") or m.get("time_remaining_hours") or 0
                 unique.append(m)
 
         return Response({"success": True, "count": len(unique), "markets": unique})
@@ -216,7 +245,15 @@ class MarketViewSet(viewsets.GenericViewSet):
         if not event_id:
             return Response({"error": "event_id required"}, status=400)
         try:
-            history = bayse_client.get_price_history(event_id)
+            market = fs.get(Collection.MARKETS, event_id)
+            source = market.get('source', 'bayse') if market else 'bayse'
+            if source == 'polymarket':
+                from services.polymarket_client import polymarket_client
+                token_id = market.get('bayse_market_id')
+                condition_id = event_id.replace('poly_', '') if event_id.startswith('poly_') else event_id
+                history = polymarket_client.get_price_history(condition_id, token_id)
+            else:
+                history = bayse_client.get_price_history(event_id)
             return Response(history if history else [])
         except Exception as e:
             return Response({"error": str(e)}, status=500)
@@ -229,10 +266,17 @@ class MarketViewSet(viewsets.GenericViewSet):
         if not event_id:
             return Response({"error": "event_id required"}, status=400)
         try:
-            outcome_id = bayse_client.get_outcome_id(event_id)
-            if not outcome_id:
-                return Response({"error": "No active order book"}, status=404)
-            ob = bayse_client.get_order_book(outcome_id)
+            market = fs.get(Collection.MARKETS, event_id)
+            source = market.get('source', 'bayse') if market else 'bayse'
+            if source == 'polymarket':
+                from services.polymarket_client import polymarket_client
+                token_id = market.get('bayse_market_id') if market else None
+                ob = polymarket_client.get_order_book(token_id) if token_id else {}
+            else:
+                outcome_id = bayse_client.get_outcome_id(event_id)
+                if not outcome_id:
+                    return Response({"error": "No active order book"}, status=404)
+                ob = bayse_client.get_order_book(outcome_id)
             return Response(ob if ob else {})
         except Exception as e:
             return Response({"error": str(e)}, status=500)

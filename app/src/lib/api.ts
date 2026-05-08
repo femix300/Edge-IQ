@@ -87,6 +87,37 @@ export async function getMe(): Promise<{
   return fetchJSON(`${API_BASE.replace("/api", "")}/api/auth/me/`);
 }
 
+
+// ── USD → NGN Exchange Rate ───────────────────────────────────
+let cachedRate: number | null = null;
+
+async function getUsdToNgnRate(): Promise<number> {
+  if (cachedRate) return cachedRate;
+  try {
+    const res = await fetch(`${API_BASE}/markets/exchange-rate/`);
+    const data = await res.json();
+    cachedRate = data.rates?.NGN ?? 1600;
+  } catch {
+    cachedRate = 1600; // fallback rate
+  }
+  return cachedRate!;
+}
+
+function convertPolymarketPrices<T extends { source?: string; current_price?: number; volume_24h?: number; total_volume?: number; liquidity?: number }>(
+  market: T,
+  rate: number
+): T {
+  if (!market.source?.toLowerCase().includes("polymarket")) return market;
+  return {
+    ...market,
+    current_price: market.current_price != null ? +(market.current_price * rate).toFixed(2) : market.current_price,
+    volume_24h: market.volume_24h != null ? +(market.volume_24h * rate).toFixed(2) : market.volume_24h,
+    total_volume: market.total_volume != null ? +(market.total_volume * rate).toFixed(2) : market.total_volume,
+    liquidity: market.liquidity != null ? +(market.liquidity * rate).toFixed(2) : market.liquidity,
+  };
+}
+// ─────────────────────────────────────────────────────────────
+
 // Markets
 export async function scanMarkets(params?: {
   status?: string;
@@ -95,10 +126,12 @@ export async function scanMarkets(params?: {
   max_results?: number;
   category?: string;
 }): Promise<{ success: boolean; count: number; markets: Market[] }> {
-  return fetchJSON(`${API_BASE}/markets/scan/`, {
+  const res = await fetchJSON<{ success: boolean; count: number; markets: Market[] }>(`${API_BASE}/markets/scan/`, {
     method: "POST",
     body: JSON.stringify(params || {}),
   });
+  const rate = await getUsdToNgnRate();
+  return { ...res, markets: res.markets.map(m => convertPolymarketPrices(m, rate)) };
 }
 
 export async function getMarkets(params?: {
@@ -112,7 +145,9 @@ export async function getMarkets(params?: {
   if (params?.category) qs.set("category", params.category);
   if (params?.page) qs.set("page", String(params.page));
   if (params?.page_size) qs.set("page_size", String(params.page_size));
-  return fetchJSON(`${API_BASE}/markets/?${qs.toString()}`);
+  const res = await fetchJSON<{ results: Market[]; count: number }>(`${API_BASE}/markets/?${qs.toString()}`);
+  const rate = await getUsdToNgnRate();
+  return { ...res, results: res.results.map(m => convertPolymarketPrices(m, rate)) };
 }
 
 export async function getTopMarkets(
@@ -122,11 +157,15 @@ export async function getTopMarkets(
   const qs = new URLSearchParams();
   if (limit) qs.set("limit", String(limit));
   if (category) qs.set("category", category);
-  return fetchJSON(`${API_BASE}/markets/top/?${qs.toString()}`);
+  const res = await fetchJSON<{ success: boolean; count: number; markets: Market[] }>(`${API_BASE}/markets/top/?${qs.toString()}`);
+  const rate = await getUsdToNgnRate();
+  return { ...res, markets: res.markets.map(m => convertPolymarketPrices(m, rate)) };
 }
 
 export async function getMarketDetail(id: string): Promise<Market> {
-  return fetchJSON(`${API_BASE}/markets/${id}/`);
+  const res = await fetchJSON<Market>(`${API_BASE}/markets/${id}/`);
+  const rate = await getUsdToNgnRate();
+  return convertPolymarketPrices(res, rate);
 }
 
 export async function analyzeMarket(
@@ -254,6 +293,21 @@ export async function getCalibrationData(): Promise<{
   return fetchJSON(`${API_BASE}/signals/calibration-curve/`);
 }
 
+export async function getPredictionStats(): Promise<any> {
+  return fetchJSON(`${API_BASE}/predictions/stats/`);
+}
+
+export async function manualResolvePrediction(predictionId: string, outcome: "YES" | "NO"): Promise<any> {
+  return fetchJSON(`${API_BASE}/predictions/manual-resolve/`, {
+    method: "POST",
+    body: JSON.stringify({ prediction_id: predictionId, outcome }),
+  });
+}
+
+export async function resolvePredictions(): Promise<any> {
+  return fetchJSON(`${API_BASE}/predictions/resolve/`, { method: "POST" });
+}
+
 export async function getAccuracyMetrics(): Promise<{ success: boolean; metrics: AccuracyMetrics }> {
   return fetchJSON(`${API_BASE}/signals/accuracy-metrics/`);
 }
@@ -344,3 +398,7 @@ export async function clearAllSignalsDb(): Promise<{ success: boolean; deleted_c
   return fetchJSON(`${API_BASE}/signals/clear_all/`, { method: "POST" });
 }
 
+
+export async function unresolvePredictions(): Promise<any> {
+  return fetchJSON(`${API_BASE}/predictions/unresolve-all/`, { method: "POST" });
+}

@@ -36,6 +36,7 @@ urlpatterns = [
     # API routes
     path('api/markets/', include('markets.urls')),
     path('api/signals/', include('signals.urls')),
+    path('api/predictions/', include('signals.prediction_urls')),
     path('api/portfolio/', include('portfolio.urls')),
     path('api/backtest/', include('backtesting.urls')),
     path('api/users/', include('users.urls')),

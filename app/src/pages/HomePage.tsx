@@ -67,7 +67,7 @@ const HomePage = () => {
           </h1>
           <p className="text-lg text-[#8b92a8] mb-8 leading-relaxed max-w-2xl mx-auto">
             EdgeIQ combines quantitative finance, machine learning, and real-time market data 
-            to identify mispriced probabilities across Bayse prediction markets. 
+            to identify mispriced probabilities across Bayse and Polymarket prediction markets. 
             Our 4-agent AI pipeline scans, analyzes, estimates, and generates signals 
             in under 12 seconds.
           </p>
@@ -138,7 +138,7 @@ const HomePage = () => {
               true probability.
             </p>
             <p className="text-[#8b92a8] leading-relaxed mb-4">
-              EdgeIQ automates this process. We scan Bayse markets for events with pricing inefficiencies, 
+              EdgeIQ automates this process. We aggregate Bayse (African-focused, naira-denominated) and Polymarket (global, crypto-settled) markets, scan for pricing inefficiencies, 
               run quantitative metrics on order books and price history, use Google's Gemini AI with 
               Search Grounding to research real-world context, and generate actionable trade signals 
               with Kelly Criterion stake sizing.
@@ -243,7 +243,7 @@ const HomePage = () => {
           <FeatureCard
             icon={<Globe className="w-5 h-5 text-[#00d4ff]" />}
             title="Live Markets"
-            description="Crypto, sports, politics, entertainment, and more — all synced live from Bayse prediction markets."
+            description="Crypto, sports, politics, and more — aggregated live from both Bayse (African naira markets) and Polymarket (global crypto-settled markets)."
             color="#00d4ff"
           />
           <FeatureCard
@@ -290,7 +290,7 @@ const HomePage = () => {
       {/* Footer */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 border-t border-[#1a2030] text-center">
         <p className="text-xs text-[#5a6070]">
-          EdgeIQ — AI Quant Intelligence for Prediction Markets · Built with React, Django & Gemini
+          EdgeIQ — AI Quant Intelligence for Prediction Markets · Powered by Bayse & Polymarket · Built with React, Django & Gemini
         </p>
       </div>
     </div>

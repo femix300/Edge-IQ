@@ -31,7 +31,7 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000):
             yield f"data: {json.dumps({'type': 'error', 'message': 'Market not found'})}\n\n"
             return
 
-        market["id"] = market.get("bayse_event_id", market_event_id)
+        market["id"] = market.get("bayse_event_id") or market_event_id
         fs.set(Collection.MARKETS, market_event_id, market, merge=True)
         market_title = market.get('title', 'Unknown')
 
@@ -112,7 +112,7 @@ def sse_analyze_view(request, pk=None):
         try:
             from firebase_admin import auth as firebase_auth
             token = auth_header[7:]
-            decoded = firebase_auth.verify_id_token(token, check_revoked=False)
+            decoded = firebase_auth.verify_id_token(token, check_revoked=False, clock_skew_seconds=10)
             user_id = decoded.get("uid", "anonymous")
             print(f"SSE Firebase auth SUCCESS: uid={user_id}", flush=True)
         except Exception as e:

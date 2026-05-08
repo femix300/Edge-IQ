@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import SignalViewSet
+from .prediction_views import prediction_stats, resolve_predictions
 
 router = DefaultRouter()
 router.register('', SignalViewSet, basename='signal')
@@ -14,6 +15,8 @@ urlpatterns = [
     path('stats/', SignalViewSet.as_view({'get': 'stats'}), name='signal-stats'),
     path('cleanup/', SignalViewSet.as_view({'post': 'cleanup'}), name='signal-cleanup'),
     
+    path('prediction-stats/', prediction_stats),
+    path('resolve-predictions/', resolve_predictions),
     # Router must be last to catch everything else
     path('', include(router.urls)),
 ]

@@ -34,12 +34,13 @@ def analyze_market(market_id):
 
         title = market.get('title', 'Unknown')
         bayse_market_id = market.get('bayse_market_id', '')
-        logger.info(f"Analyzing market: {title}")
+        source = market.get('source', 'bayse')  # 'bayse' or 'polymarket'
+        logger.info(f"Analyzing market: {title} [source={source}]")
 
-        # Fetch data from Bayse
-        price_history = fetch_price_history(market_id, bayse_market_id, title)
-        ticker_data = fetch_ticker_data(market_id, bayse_market_id, title)
-        order_book_data = fetch_order_book(market_id)
+        # Fetch data — routed by source
+        price_history = fetch_price_history(market_id, bayse_market_id, title, source=source)
+        ticker_data = fetch_ticker_data(market_id, bayse_market_id, title, source=source)
+        order_book_data = fetch_order_book(market_id, source=source)
 
         # Calculate metrics
         momentum_metrics = calculate_momentum_metrics(price_history)
@@ -83,8 +84,12 @@ def save_quant_metrics_to_firestore(market_id, title, metrics):
     logger.info(f"Quant metrics saved to Firestore for {market_id}")
 
 
-def fetch_price_history(market_id, bayse_market_id, title):
-    """Fetch price history from Bayse — no SQLite storage needed."""
+def fetch_price_history(market_id, bayse_market_id, title, source='bayse'):
+    """Fetch price history — routed by source."""
+    if source == 'polymarket':
+        from services.polymarket_client import polymarket_client
+        condition_id = market_id.replace('poly_', '')
+        return polymarket_client.get_price_history(condition_id, bayse_market_id)
     try:
         history = bayse_client.get_price_history(
             event_id=market_id,
@@ -98,8 +103,10 @@ def fetch_price_history(market_id, bayse_market_id, title):
         return []
 
 
-def fetch_ticker_data(market_id, bayse_market_id, title):
-    """Fetch current ticker from Bayse."""
+def fetch_ticker_data(market_id, bayse_market_id, title, source='bayse'):
+    """Fetch current ticker — Polymarket has no ticker endpoint, returns empty dict."""
+    if source == 'polymarket':
+        return {}  # Polymarket has no ticker endpoint
     try:
         if not bayse_market_id:
             return {}
@@ -115,8 +122,13 @@ def fetch_ticker_data(market_id, bayse_market_id, title):
         return {}
 
 
-def fetch_order_book(market_id):
-    """Fetch order book from Bayse."""
+def fetch_order_book(market_id, source='bayse'):
+    """Fetch order book — routed by source."""
+    if source == 'polymarket':
+        from services.polymarket_client import polymarket_client
+        market = fs.get(Collection.MARKETS, market_id)
+        token_id = market.get('bayse_market_id') if market else None
+        return polymarket_client.get_order_book(token_id) if token_id else {}
     try:
         outcome_id = bayse_client.get_outcome_id(market_id, outcome_label='YES')
         if not outcome_id:

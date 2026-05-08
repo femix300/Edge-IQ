@@ -249,8 +249,8 @@ const StaticMarketView = ({ market, onDeepDive }: { market: any; onDeepDive: () 
             <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#0a0e17] text-[#8b92a8] border border-[#1a2030]">
               Prediction Market
             </span>
-            <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#0a0e17] text-[#8b92a8] border border-[#1a2030]">
-              Bayse
+            <span className={`px-3 py-1 rounded-full text-xs font-medium border ${market.source === "polymarket" ? "bg-[#9b59b6]/15 text-[#9b59b6] border-[#9b59b6]/30" : "bg-[#00d4ff]/10 text-[#00d4ff] border-[#00d4ff]/30"}`}>
+              {market.source === "polymarket" ? "Polymarket" : "Bayse"}
             </span>
           </div>
         </div>
@@ -303,10 +303,16 @@ const MarketDeepDive = () => {
   const [fromSignal, setFromSignal] = useState(false);
   const [pipelineProgress, setPipelineProgress] = useState<{ step: string; agent: number; total: number; message: string } | null>(null);
   const [staticOnly, setStaticOnly] = useState(() => {
+    if (location.state?.staticOnly === false) return false;
+    if (location.state?.staticOnly === true) return true;
     const isSignal = sessionStorage.getItem("fromSignal") === "true" || !!sessionStorage.getItem("cachedSignal");
-    return !isSignal; // default true (static) unless coming from signal feed
+    return !isSignal;
   });
   const [deepDiveTriggered, setDeepDiveTriggered] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
 
   useEffect(() => {
     if (toast) {
@@ -480,6 +486,7 @@ const MarketDeepDive = () => {
   const handleDeepDive = () => {
     setStaticOnly(false);
     setDeepDiveTriggered(true);
+    window.scrollTo({ top: 0, behavior: 'instant' });
     runPipeline();
   };
 
@@ -612,6 +619,11 @@ const MarketDeepDive = () => {
           <div className="h-[300px] flex flex-col items-center justify-center gap-3">
             <div className="w-8 h-8 border-2 border-[#00d4ff]/30 border-t-[#00d4ff] rounded-full animate-spin" />
             <p className="text-sm text-[#8b92a8]">Loading price history...</p>
+          </div>
+        ) : priceData.length === 0 ? (
+          <div className="h-[300px] flex flex-col items-center justify-center gap-2">
+            <TrendingUp className="w-8 h-8 text-[#1a2030]" />
+            <p className="text-[#8b92a8] text-sm">No price history available for this market</p>
           </div>
         ) : (
           <div className="h-[300px]">

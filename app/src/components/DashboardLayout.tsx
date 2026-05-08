@@ -1,6 +1,6 @@
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { logoutFirebase } from "@/lib/firebase";
-import { useState, Component, type ReactNode } from "react";
+import { useState, useEffect, Component, type ReactNode } from "react";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode }) {
@@ -57,7 +57,17 @@ const DashboardLayout = () => {
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
+  const [_profileOpen, _setProfileOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      
+    } else {
+      
+    }
+    return () => {  };
+  }, [sidebarOpen]);
 
   const handleLogout = async () => {
     try { await logoutFirebase(); } catch {}
@@ -68,73 +78,73 @@ const DashboardLayout = () => {
 
   return (
     <div className="flex min-h-screen bg-[#0a0e17]">
-      <aside className="hidden md:flex flex-col w-64 bg-[#0f1420] border-r border-[#1a2030] fixed h-screen z-40">
-        <div className="p-6 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#00d4ff] flex items-center justify-center">
-            <Radar className="w-5 h-5 text-[#0a0e17]" />
-          </div>
-          <span className="font-bold text-lg text-[#dee2f5] tracking-tight">EdgeIQ</span>
-        </div>
-
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.route || location.pathname.startsWith(`${item.route}/`);
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.route}
-                onClick={() => navigate(item.route)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-                  isActive
-                    ? "bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/20"
-                    : "text-[#8b92a8] hover:text-[#dee2f5] hover:bg-[#1a2030]"
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {item.name}
+      {/* Sidebar — width transitions between collapsed (w-14) and expanded (w-56) */}
+      <aside className={`hidden md:flex flex-col flex-shrink-0 bg-[#0a0e17] border-r border-[#0a0e17] h-screen sticky top-0 transition-all duration-300 overflow-hidden ${sidebarOpen ? "w-56" : "w-14"}`}>
+        {/* Header row */}
+        <div className="flex items-center justify-between px-3 py-4 min-h-[60px] border-b border-[#0a0e17]">
+          {sidebarOpen ? (
+            <>
+              <button onClick={() => { navigate("/home"); setSidebarOpen(false); }} className="w-8 h-8 rounded-lg bg-[#00d4ff] flex items-center justify-center hover:bg-[#00d4ff]/80 transition-colors flex-shrink-0">
+                <Radar className="w-5 h-5 text-[#0a0e17]" />
               </button>
-            );
-          })}
-        </nav>
-
-        <div className="p-4 border-t border-[#1a2030]">
-          <button
-            onClick={() => setProfileOpen(!profileOpen)}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#1a2030] transition-all"
-          >
-            <div className="w-8 h-8 rounded-full bg-[#00d4ff]/10 border border-[#00d4ff]/30 flex items-center justify-center">
-              <User className="w-4 h-4 text-[#00d4ff]" />
-            </div>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-sm text-[#dee2f5] truncate">{user?.displayName || user?.username || "Trader"}</p>
-              <p className="text-xs text-[#5a6070] truncate">{user?.email || ""}</p>
-            </div>
-          </button>
-
-          {profileOpen && (
-            <div className="mt-2 space-y-1">
-              <button
-                onClick={() => { navigate("/profile"); setProfileOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#8b92a8] hover:text-[#dee2f5] hover:bg-[#1a2030] transition-all"
-              >
-                <User className="w-4 h-4" />
-                Profile
+              <span className="font-bold text-[#dee2f5] flex-1 ml-3 whitespace-nowrap">EdgeIQ</span>
+              <button onClick={() => setSidebarOpen(false)} className="text-[#5a6070] hover:text-[#dee2f5] transition-colors flex-shrink-0">
+                <Menu className="w-5 h-5" />
               </button>
-              <button
-                onClick={handleLogout}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-[#ff4757] hover:bg-[#ff4757]/10 transition-all"
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </button>
-            </div>
+            </>
+          ) : (
+            <button onClick={() => setSidebarOpen(true)} className="mx-auto text-[#5a6070] hover:text-[#dee2f5] transition-colors">
+              <Menu className="w-5 h-5" />
+            </button>
           )}
-
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1a2030]/50 mt-3">
-            <div className="w-2 h-2 rounded-full bg-[#00ff88] animate-pulse-dot" />
-            <span className="text-xs text-[#8b92a8]">Live Data</span>
-          </div>
         </div>
+
+        {/* Nav items — only visible when expanded */}
+        {sidebarOpen && (
+          <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto overscroll-contain">
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.route || location.pathname.startsWith(`${item.route}/`);
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.route}
+                  onClick={() => { navigate(item.route); setSidebarOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all justify-start ${
+                    isActive ? "bg-[#00d4ff]/10 text-[#00d4ff]" : "text-[#8b92a8] hover:text-[#dee2f5] hover:bg-[#1a2030]"
+                  }`}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span className="whitespace-nowrap">{item.name}</span>
+                </button>
+              );
+            })}
+          </nav>
+        )}
+        {!sidebarOpen && <div className="flex-1" />}
+
+        {/* Footer — only visible when expanded */}
+        {sidebarOpen && (
+          <div className="px-2 py-4 border-t border-[#1a2030] space-y-1">
+            <button
+              onClick={() => { navigate("/profile"); setSidebarOpen(false); }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-[#8b92a8] hover:text-[#dee2f5] hover:bg-[#1a2030] transition-all justify-start"
+            >
+              <User className="w-4 h-4 flex-shrink-0" />
+              <span className="whitespace-nowrap">Profile</span>
+            </button>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-[#ff4757] hover:bg-[#ff4757]/10 transition-all justify-start"
+            >
+              <LogOut className="w-4 h-4 flex-shrink-0" />
+              <span className="whitespace-nowrap">Sign Out</span>
+            </button>
+            <div className="flex items-center gap-2 px-3 py-2">
+              <div className="w-2 h-2 rounded-full bg-[#00ff88] animate-pulse-dot flex-shrink-0" />
+              <span className="text-xs text-[#8b92a8] whitespace-nowrap">Live Data</span>
+            </div>
+          </div>
+        )}
       </aside>
 
       <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-[#0f1420] border-b border-[#1a2030] px-4 py-3 flex items-center justify-between">
@@ -187,7 +197,7 @@ const DashboardLayout = () => {
         </div>
       )}
 
-      <main className="flex-1 md:ml-64 pt-14 md:pt-0 min-h-screen">
+      <main className="flex-1 pt-14 md:pt-0 min-h-screen overflow-x-hidden">
         <div className="p-4 md:p-8 max-w-[1440px] mx-auto">
           <ErrorBoundary key={location.pathname}><Outlet /></ErrorBoundary>
         </div>

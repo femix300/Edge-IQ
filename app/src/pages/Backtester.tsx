@@ -15,7 +15,7 @@ const Backtester = () => {
   const [bankroll, setBankroll] = useState(10000);
 
   useEffect(() => {
-    const fetch = async () => {
+    const loadData = async () => {
       setLocalLoading(true);
       setLoading(true);
       try {
@@ -29,7 +29,7 @@ const Backtester = () => {
       setLocalLoading(false);
       setLoading(false);
     };
-    fetch();
+    loadData();
   }, []);
 
   const handleRun = async () => {
@@ -57,7 +57,7 @@ const Backtester = () => {
     );
   }
 
-  const formatPercent = (v: number) => `${Number(v).toFixed(1)}%`;
+  const formatPercent = (v: number) => `${(Number(v) * 100).toFixed(1)}%`;
   const formatMoney = (v: number) => `₦${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
   return (
