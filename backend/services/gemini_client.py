@@ -22,18 +22,22 @@ class AIAnalysisSchema(BaseModel):
 
 # Available models in order of preference
 AVAILABLE_MODELS = [
-    'gemini-2.5-flash',
+    'gemini-3-flash-preview',           # ← BEST OVERALL for Demo (Recommended)
+    'gemini-3.1-pro-preview',           # Strongest reasoning (use for impressive answers)
+    'gemini-3-pro-preview',             # Excellent performance
+    'gemini-3.1-flash-lite-preview',    # Good lightweight alternative
+    
+    # Stable / Latest aliases (good fallbacks)
+    'gemini-pro-latest',
+    'gemini-flash-latest',
+    'gemini-flash-lite-latest',
+
+    # Older models (kept for reference / fallback)
     'gemini-2.5-pro',
+    'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
     'gemini-2.0-flash',
     'gemini-2.0-flash-lite',
-    'gemini-flash-latest',
-    'gemini-pro-latest',
-    'gemini-flash-lite-latest',
-    'gemini-3-flash-preview',
-    'gemini-3-pro-preview',
-    'gemini-3.1-pro-preview',
-    'gemini-3.1-flash-lite-preview',
 ]
 class GeminiClient:
     """Client for Google Gemini AI with automatic model failover"""
