@@ -9,6 +9,7 @@ const Calibration = () => {
   const [predStats, setPredStats] = useState<any>(null);
   const [resolving, setResolving] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ updated: number; notResolvedYet: number; nonPoly: number } | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -146,11 +147,26 @@ const Calibration = () => {
             <button
               onClick={async () => {
                 setResolving(true);
-                await unresolvePredictions();
-                await resolvePredictions();
-                const res = await getPredictionStats();
-                if (res.success) setPredStats(res);
-                setResolving(false);
+                setSyncResult(null);
+                try {
+                  await unresolvePredictions();
+                  const syncRes = await resolvePredictions();
+                  // Show how many were resolved vs still pending
+                  if (syncRes?.success) {
+                    setSyncResult({
+                      updated: syncRes.updated ?? 0,
+                      notResolvedYet: syncRes.skipped_not_resolved_yet ?? 0,
+                      nonPoly: syncRes.skipped_non_polymarket ?? 0,
+                    });
+                    if ((syncRes.updated ?? 0) > 0) setShowPredictions(true);
+                  }
+                  const res = await getPredictionStats();
+                  if (res.success) setPredStats(res);
+                } catch (err) {
+                  console.error("Sync outcomes failed:", err);
+                } finally {
+                  setResolving(false);
+                }
               }}
               className="text-xs px-3 py-1.5 rounded-lg bg-[#1a2030] text-[#8b92a8] hover:text-[#00d4ff] border border-[#1a2030] hover:border-[#00d4ff] transition-colors"
             >
@@ -164,6 +180,36 @@ const Calibration = () => {
             </button>
           </div>
         </div>
+
+        {syncResult !== null && !resolving && (
+          <div className={`mb-4 px-3 py-2 rounded-lg text-xs flex items-center gap-2 border ${
+            syncResult.updated > 0
+              ? "bg-[#00ff8810] border-[#00ff8830] text-[#00ff88]"
+              : "bg-[#1a2030] border-[#1a2030] text-[#8b92a8]"
+          }`}>
+            {syncResult.updated > 0 ? (
+              <>
+                <span className="font-semibold">✓ {syncResult.updated} prediction{syncResult.updated !== 1 ? "s" : ""} resolved</span>
+                {syncResult.notResolvedYet > 0 && (
+                  <span className="text-[#5a6070]">· {syncResult.notResolvedYet} market{syncResult.notResolvedYet !== 1 ? "s" : ""} not resolved yet on Polymarket</span>
+                )}
+                {syncResult.nonPoly > 0 && (
+                  <span className="text-[#5a6070]">· {syncResult.nonPoly} need manual resolve</span>
+                )}
+              </>
+            ) : (
+              <>
+                <span>No new resolutions found</span>
+                {syncResult.notResolvedYet > 0 && (
+                  <span className="text-[#5a6070]">· {syncResult.notResolvedYet} Polymarket market{syncResult.notResolvedYet !== 1 ? "s" : ""} still open</span>
+                )}
+                {syncResult.nonPoly > 0 && (
+                  <span className="text-[#5a6070]">· {syncResult.nonPoly} non-Polymarket (use manual YES/NO)</span>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-4 gap-3 mb-5">
           {[
@@ -181,42 +227,89 @@ const Calibration = () => {
 
         {showPredictions && (
           predStats?.recent_predictions?.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
               <table className="w-full text-xs">
-                <thead>
+                <thead className="sticky top-0 bg-[#131a2b] z-10">
                   <tr className="text-[#5a6070] border-b border-[#1a2030]">
                     <th className="text-left pb-2 pr-4">Market</th>
                     <th className="text-right pb-2 pr-4">EdgeIQ</th>
                     <th className="text-right pb-2 pr-4">Crowd</th>
                     <th className="text-center pb-2 pr-4">Predicted</th>
+                    <th className="text-center pb-2 pr-4">Actual</th>
                     <th className="text-center pb-2">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {predStats.recent_predictions.map((p: any, i: number) => (
-                    <tr key={i} className="border-b border-[#1a2030] hover:bg-[#0a0e17]">
-                      <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">{p.market_title}</td>
-                      <td className="py-2 pr-4 text-right text-[#00d4ff]">{p.ai_probability}%</td>
-                      <td className="py-2 pr-4 text-right text-[#8b92a8]">{p.market_probability}%</td>
-                      <td className="py-2 pr-4 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.predicted_outcome === 'YES' ? 'bg-[#00ff8820] text-[#00ff88]' : 'bg-[#ff4d4d20] text-[#ff4d4d]'}`}>
-                          {p.predicted_outcome}
-                        </span>
-                      </td>
-                      <td className="py-2 text-center">
-                        {p.status === 'pending' ? (
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={async () => { await manualResolvePrediction(p.id, "YES"); const res = await getPredictionStats(); if (res.success) setPredStats(res); }} className="px-2 py-0.5 rounded text-[10px] bg-[#00ff8815] text-[#00ff88] hover:bg-[#00ff8830] border border-[#00ff8840]">YES</button>
-                            <button onClick={async () => { await manualResolvePrediction(p.id, "NO"); const res = await getPredictionStats(); if (res.success) setPredStats(res); }} className="px-2 py-0.5 rounded text-[10px] bg-[#ff4d4d15] text-[#ff4d4d] hover:bg-[#ff4d4d30] border border-[#ff4d4d40]">NO</button>
-                          </div>
-                        ) : p.was_correct ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-[#00ff8820] text-[#00ff88]">✓ Correct</span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-[#ff4d4d20] text-[#ff4d4d]">✗ Wrong</span>
+                  {(() => {
+                    const allPreds = predStats.recent_predictions;
+                    const resolvedPreds = allPreds.filter((p: any) => p.status === 'resolved');
+                    const pendingPreds = allPreds.filter((p: any) => p.status !== 'resolved');
+
+                    return (
+                      <>
+                        {resolvedPreds.map((p: any, i: number) => (
+                          <tr key={`r-${i}`} className="border-b border-[#1a2030] hover:bg-[#0a0e17]">
+                            <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">{p.market_title}</td>
+                            <td className="py-2 pr-4 text-right text-[#00d4ff]">{p.ai_probability}%</td>
+                            <td className="py-2 pr-4 text-right text-[#8b92a8]">{p.market_probability}%</td>
+                            <td className="py-2 pr-4 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.predicted_outcome === 'YES' ? 'bg-[#00ff8820] text-[#00ff88]' : 'bg-[#ff4d4d20] text-[#ff4d4d]'}`}>
+                                {p.predicted_outcome}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-4 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.resolved_outcome === 'YES' ? 'bg-[#00d4ff20] text-[#00d4ff]' : 'bg-[#ffa50220] text-[#ffa502]'}`}>
+                                {p.resolved_outcome}
+                              </span>
+                            </td>
+                            <td className="py-2 text-center">
+                              {p.was_correct ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] bg-[#00ff8820] text-[#00ff88]">✓ Correct</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] bg-[#ff4d4d20] text-[#ff4d4d]">✗ Wrong</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+
+                        {resolvedPreds.length > 0 && pendingPreds.length > 0 && (
+                          <tr>
+                            <td colSpan={6} className="py-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1 border-t border-[#1a2030]" />
+                                <span className="text-[10px] uppercase tracking-wider text-[#5a6070]">
+                                  Pending — awaiting market resolution
+                                </span>
+                                <div className="flex-1 border-t border-[#1a2030]" />
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+
+                        {pendingPreds.map((p: any, i: number) => (
+                          <tr key={`p-${i}`} className="border-b border-[#1a2030] hover:bg-[#0a0e17] opacity-70">
+                            <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">{p.market_title}</td>
+                            <td className="py-2 pr-4 text-right text-[#00d4ff]">{p.ai_probability}%</td>
+                            <td className="py-2 pr-4 text-right text-[#8b92a8]">{p.market_probability}%</td>
+                            <td className="py-2 pr-4 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${p.predicted_outcome === 'YES' ? 'bg-[#00ff8820] text-[#00ff88]' : 'bg-[#ff4d4d20] text-[#ff4d4d]'}`}>
+                                {p.predicted_outcome}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-4 text-center">
+                              <span className="text-[10px] text-[#5a6070]">—</span>
+                            </td>
+                            <td className="py-2 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button onClick={async () => { await manualResolvePrediction(p.id, "YES"); const res = await getPredictionStats(); if (res.success) setPredStats(res); }} className="px-2 py-0.5 rounded text-[10px] bg-[#00ff8815] text-[#00ff88] hover:bg-[#00ff8830] border border-[#00ff8840]">YES</button>
+                                <button onClick={async () => { await manualResolvePrediction(p.id, "NO"); const res = await getPredictionStats(); if (res.success) setPredStats(res); }} className="px-2 py-0.5 rounded text-[10px] bg-[#ff4d4d15] text-[#ff4d4d] hover:bg-[#ff4d4d30] border border-[#ff4d4d40]">NO</button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>

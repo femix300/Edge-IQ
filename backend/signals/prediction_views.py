@@ -63,6 +63,13 @@ def prediction_stats(request):
                     "count": data["count"],
                 })
 
+        # Sort: resolved first (correct → wrong), then pending
+        predictions.sort(key=lambda p: (
+            0 if p.get("status") == "resolved" and p.get("was_correct") else
+            1 if p.get("status") == "resolved" else
+            2
+        ))
+
         response_data = {
             "success": True,
             "stats": {
@@ -73,7 +80,7 @@ def prediction_stats(request):
                 "accuracy": accuracy,
             },
             "calibration_points": calibration_points,
-            "recent_predictions": predictions[:20],
+            "recent_predictions": predictions,
         }
         _stats_cache["data"] = response_data
         _stats_cache["ts"] = time.time()
@@ -88,52 +95,128 @@ def prediction_stats(request):
 def resolve_predictions(request):
     """
     POST /api/signals/resolve-predictions/
-    Matches pending predictions against Polymarket resolved markets
-    and updates their status automatically
+    For each pending Polymarket prediction, queries the Polymarket CLOB API
+    directly by conditionId to check if that specific market has resolved.
+
+    Uses https://clob.polymarket.com/markets/{conditionId} which returns the
+    exact market with tokens[].winner=true for the winning outcome.
+
+    Note: The Gamma API (/markets?conditionId=X) does NOT filter by conditionId
+    and returns unrelated markets. The CLOB API is the only reliable way to
+    look up a specific market by conditionId.
     """
+    import requests
+    import time as _time
+
+    CLOB_URL = "https://clob.polymarket.com"
+
     try:
-        import sys
-        sys.path.insert(0, 'backend') if 'backend' not in sys.path[0] else None
-        from services.polymarket_resolved import fetch_resolved_markets
+        docs = list(
+            fs.db.collection(Collection.PREDICTIONS)
+            .where("status", "==", "pending")
+            .stream()
+        )
 
-        resolved_markets = fetch_resolved_markets(400)
-        resolved_map = {m["id"]: m for m in resolved_markets}
-        resolved_by_question = {m["question"].lower().strip(): m for m in resolved_markets}
-
-        # Get pending predictions
-        docs = fs.db.collection(Collection.PREDICTIONS).where(
-            "status", "==", "pending"
-        ).stream()
+        logger.info(f"resolve_predictions: checking {len(docs)} pending predictions")
 
         updated = 0
+        skipped_non_poly = 0
+        skipped_not_resolved = 0
+        errors = 0
+
         for doc in docs:
             p = doc.to_dict()
             market_id = p.get("market_id", "")
-            title = p.get("market_title", "").lower().strip()
+            source = p.get("source", "unknown")
 
-            resolved = resolved_map.get(market_id) or resolved_by_question.get(title)
-            if not resolved:
+            # Only Polymarket markets can be auto-resolved
+            if source != "polymarket" or not market_id.startswith("poly_0x"):
+                skipped_non_poly += 1
                 continue
 
-            actual_outcome = resolved["winner"]
-            predicted_outcome = p.get("predicted_outcome", "YES")
-            was_correct = predicted_outcome == actual_outcome
+            # Extract conditionId: "poly_0xABC..." → "0xABC..."
+            condition_id = market_id[len("poly_"):]
 
-            fs.update(Collection.PREDICTIONS, doc.id, {
-                "status": "resolved",
-                "resolved_outcome": actual_outcome,
-                "was_correct": was_correct,
-            })
-            updated += 1
+            try:
+                resp = requests.get(
+                    f"{CLOB_URL}/markets/{condition_id}",
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                market = resp.json()
 
-        # Bust cache so next stats call returns fresh data
+                # Market must be closed
+                if not market.get("closed", False):
+                    skipped_not_resolved += 1
+                    continue
+
+                # Find winner from tokens array
+                # Each token has: {"outcome": "Yes"/"No", "winner": true/false}
+                tokens = market.get("tokens", [])
+                winner_token = next(
+                    (t for t in tokens if t.get("winner") is True), None
+                )
+
+                if not winner_token:
+                    # Closed but no winner declared yet (settlement pending)
+                    skipped_not_resolved += 1
+                    logger.debug(
+                        f"Closed but no winner yet: {p.get('market_title')!r}"
+                    )
+                    continue
+
+                # CLOB uses "Yes"/"No", predictions store "YES"/"NO"
+                winner = winner_token.get("outcome", "").upper()
+                if winner not in ("YES", "NO"):
+                    skipped_not_resolved += 1
+                    continue
+
+                predicted_outcome = p.get("predicted_outcome", "YES")
+                was_correct = predicted_outcome == winner
+
+                fs.update(Collection.PREDICTIONS, doc.id, {
+                    "status": "resolved",
+                    "resolved_outcome": winner,
+                    "was_correct": was_correct,
+                })
+                updated += 1
+                logger.info(
+                    f"Resolved '{p.get('market_title')}': "
+                    f"predicted={predicted_outcome} actual={winner} "
+                    f"correct={was_correct}"
+                )
+
+            except requests.exceptions.Timeout:
+                errors += 1
+                logger.warning(f"Timeout: conditionId={condition_id!r}")
+            except Exception as e:
+                errors += 1
+                logger.warning(f"Error: conditionId={condition_id!r}: {e}")
+
+            _time.sleep(0.15)
+
+        # Bust stats cache
         global _stats_cache
         _stats_cache = {"data": None, "ts": 0}
 
+        skipped_total = skipped_non_poly + skipped_not_resolved
+        message = (
+            f"Resolved {updated} prediction(s). "
+            f"{skipped_not_resolved} still pending (not yet resolved on Polymarket). "
+            f"{skipped_non_poly} skipped (non-Polymarket, use manual resolve)."
+        )
+        if errors:
+            message += f" {errors} API error(s)."
+
+        logger.info(f"resolve_predictions complete: {message}")
         return Response({
             "success": True,
             "updated": updated,
-            "message": f"Resolved {updated} pending predictions"
+            "skipped": skipped_total,
+            "skipped_non_polymarket": skipped_non_poly,
+            "skipped_not_resolved_yet": skipped_not_resolved,
+            "errors": errors,
+            "message": message,
         })
 
     except Exception as e:
@@ -193,10 +276,14 @@ def unresolve_all_predictions(request):
     Resets ALL predictions back to pending so Sync can re-resolve fresh.
     """
     try:
-        docs = list(fs.db.collection(Collection.PREDICTIONS).stream())
+        # Stream doc IDs first, then update via fs.update() which creates a
+        # fresh document reference internally. Calling doc.reference.update()
+        # directly on a streamed reference triggers a Firestore SDK gRPC bug:
+        # '_UnaryStreamMultiCallable' object has no attribute '_retry'.
+        doc_ids = [doc.id for doc in fs.db.collection(Collection.PREDICTIONS).stream()]
         count = 0
-        for doc in docs:
-            doc.reference.update({
+        for doc_id in doc_ids:
+            fs.update(Collection.PREDICTIONS, doc_id, {
                 "status": "pending",
                 "resolved_outcome": None,
                 "was_correct": None,
