@@ -93,9 +93,16 @@ const Calibration = () => {
       )}
 
       <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-6">
-        <h3 className="text-sm font-semibold text-[#dee2f5] mb-4">
-          Predicted Probability vs. Actual Outcome Frequency
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-[#dee2f5]">
+            Predicted Probability vs. Actual Outcome Frequency
+          </h3>
+          {calibrationData?.total_markets_analyzed != null && (
+            <span className="text-xs text-[#8b92a8] bg-[#0a0e17] px-2 py-1 rounded">
+              {calibrationData.total_markets_analyzed.toLocaleString()} markets analysed
+            </span>
+          )}
+        </div>
         <div className="h-[400px]">
           {chartData.length > 0 ? (() => {
             const W = 560, H = 340;
@@ -141,10 +148,15 @@ const Calibration = () => {
               </svg>
             );
           })() : (
-            <div className="flex flex-col items-center justify-center h-full text-[#5a6070]">
-              <AlertTriangle className="w-8 h-8 mb-2" />
-              <p>Not enough resolved markets for calibration</p>
-              <p className="text-xs mt-1">Run more backtests to generate data</p>
+            <div className="flex flex-col items-center justify-center h-full gap-3">
+              <div className="w-12 h-12 rounded-full bg-[#0a0e17] border border-[#1a2030] flex items-center justify-center">
+                <CheckCircle className="w-6 h-6 text-[#8b92a8]" />
+              </div>
+              <div className="text-center">
+                <p className="text-[#8b92a8] text-sm font-medium">Calibration data is loading from Polymarket</p>
+                <p className="text-[#5a6070] text-xs mt-1">This chart populates as Polymarket markets resolve over time.</p>
+                <p className="text-[#5a6070] text-xs">The more resolved markets, the more accurate the calibration curve.</p>
+              </div>
             </div>
           )}
         </div>
