@@ -60,11 +60,14 @@ class MarketViewSet(viewsets.GenericViewSet):
         page = int(request.query_params.get('page', 1))
         page_size = int(request.query_params.get('page_size', 100))
 
-        market_version = cache.get("market_version", 0)
-        cache_key = f"market_list_v{market_version}_{status_filter}_{category}_{page}_{page_size}"
-        cached_response = cache.get(cache_key)
-        if cached_response:
-            return Response(cached_response)
+        try:
+            market_version = cache.get("market_version", 0)
+            cache_key = f"market_list_v{market_version}_{status_filter}_{category}_{page}_{page_size}"
+            cached_response = cache.get(cache_key)
+            if cached_response:
+                return Response(cached_response)
+        except Exception:
+            cache_key = None  # Cache unavailable — proceed without it
 
         statuses = [s.strip() for s in status_filter.split(',') if s.strip()]
 
@@ -79,6 +82,12 @@ class MarketViewSet(viewsets.GenericViewSet):
                 f.append(("category", "==", category))
             f.append(("source", "==", source))
             return f
+
+        def safe_score(m):
+            try:
+                return float(m.get("signal_potential_score") or 0)
+            except (TypeError, ValueError):
+                return 0.0
 
         # Query each source separately so neither crowds out the other
         bayse_markets = fs.query(
@@ -108,7 +117,7 @@ class MarketViewSet(viewsets.GenericViewSet):
                 markets.append(m)
 
         # Sort merged list by signal_potential_score descending
-        markets.sort(key=lambda m: float(m.get("signal_potential_score") or 0), reverse=True)
+        markets.sort(key=safe_score, reverse=True)
 
         # Paginate
         start = (page - 1) * page_size
@@ -121,7 +130,11 @@ class MarketViewSet(viewsets.GenericViewSet):
             "previous": f"/api/markets/?page={page-1}&page_size={page_size}" if page > 1 else None,
             "results": page_data,
         }
-        cache.set(cache_key, response_data, timeout=60 * 5) # 5 minutes cache
+        try:
+            if cache_key:
+                cache.set(cache_key, response_data, timeout=60 * 5)  # 5 minutes
+        except Exception:
+            pass
         return Response(response_data)
 
     # ── retrieve ──────────────────────────────────────────────────────
