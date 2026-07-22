@@ -20,24 +20,12 @@ class AIAnalysisSchema(BaseModel):
     key_factors: list[str]
     sources_consulted: str
 
-# Available models in order of preference
 AVAILABLE_MODELS = [
-    'gemini-3-flash-preview',           # ← BEST OVERALL for Demo (Recommended)
-    'gemini-3.1-pro-preview',           # Strongest reasoning (use for impressive answers)
-    'gemini-3-pro-preview',             # Excellent performance
-    'gemini-3.1-flash-lite-preview',    # Good lightweight alternative
-    
-    # Stable / Latest aliases (good fallbacks)
-    'gemini-pro-latest',
-    'gemini-flash-latest',
-    'gemini-flash-lite-latest',
-
-    # Older models (kept for reference / fallback)
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
+    'gemini-2.0-flash',                 # Latest standard model
+    'gemini-2.0-flash-lite-preview-02-05', # Latest lite model
+    'gemini-1.5-pro',                   # Strongest reasoning
+    'gemini-1.5-flash',                 # Standard fallback
+    'gemini-1.5-flash-8b',              # Fast fallback
 ]
 class GeminiClient:
     """Client for Google Gemini AI with automatic model failover"""
