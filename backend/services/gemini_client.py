@@ -9,6 +9,9 @@ from decouple import config
 import json
 import logging
 import time
+import urllib.request
+import urllib.parse
+import xml.etree.ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
@@ -167,16 +170,45 @@ class GeminiClient:
             traceback.print_exc()
             return self._default_response(custom_message=error_msg)
 
+    def _fetch_live_news(self, query):
+        """Fetch real-time news headlines using Google News RSS (No API Key Required)"""
+        try:
+            encoded_query = urllib.parse.quote(query)
+            url = f'https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en'
+            
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                xml_data = response.read()
+                root = ET.fromstring(xml_data)
+                
+                news_items = []
+                for item in root.findall('.//item')[:5]:  # Get top 5 headlines
+                    title = item.find('title').text
+                    pubDate = item.find('pubDate').text
+                    news_items.append(f"- {pubDate}: {title}")
+                
+                if not news_items:
+                    return "No recent news found."
+                return "\n".join(news_items)
+        except Exception as e:
+            logger.warning(f"Failed to fetch live news: {str(e)}")
+            return "Live news search unavailable."
+
     def _build_research_prompt(self, title, description, context=None):
         """Build prompt for the Research phase"""
+        news_context = self._fetch_live_news(title)
+        
         prompt = f"""
         Act as a professional prediction market analyst.
         Event: {title}
         Description: {description}
         Current Market Context: {json.dumps(context) if context else 'None'}
         
-        Based on your extensive knowledge base and training data, provide a comprehensive research report detailing:
-        1. Current status and recent developments
+        Recent Live News Headlines:
+        {news_context}
+        
+        Based on your extensive knowledge base, training data, and the provided Live News Headlines above, provide a comprehensive research report detailing:
+        1. Current status and recent developments (explicitly mention news if relevant)
         2. Key factors that will influence the outcome
         3. A reasoned estimation of the probability (0-100)
         4. Your confidence level in this estimation
