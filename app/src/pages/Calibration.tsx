@@ -4,9 +4,8 @@ import { getCalibrationData, getAccuracyMetrics, getPredictionStats, resolvePred
 import { Target, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 
 const Calibration = () => {
-  const { calibrationData, accuracyMetrics, loading, setCalibrationData, setAccuracyMetrics, setLoading, setLastFetched } = useCalibrationStore();
+  const { calibrationData, accuracyMetrics, loading, predStats, setCalibrationData, setAccuracyMetrics, setLoading, setLastFetched, setPredStats } = useCalibrationStore();
   const [tooltip, setTooltip] = useState<{x: number, y: number, p: any} | null>(null);
-  const [predStats, setPredStats] = useState<any>(null);
   const [resolving, setResolving] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
   const [syncResult, setSyncResult] = useState<{ updated: number; notResolvedYet: number; nonPoly: number } | null>(null);

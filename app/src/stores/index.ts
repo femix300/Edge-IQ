@@ -240,10 +240,12 @@ export const useBacktestStore = create<BacktestState>((set) => ({
 interface CalibrationState {
   calibrationData: CalibrationData | null;
   accuracyMetrics: AccuracyMetrics | null;
+  predStats: any;
   loading: boolean;
   lastFetched: number | null;
   setCalibrationData: (data: CalibrationData | null) => void;
   setAccuracyMetrics: (metrics: AccuracyMetrics | null) => void;
+  setPredStats: (stats: any) => void;
   setLoading: (loading: boolean) => void;
   setLastFetched: (timestamp: number) => void;
 }
@@ -251,10 +253,12 @@ interface CalibrationState {
 export const useCalibrationStore = create<CalibrationState>((set) => ({
   calibrationData: null,
   accuracyMetrics: null,
+  predStats: null,
   loading: false,
   lastFetched: null,
   setCalibrationData: (calibrationData) => set({ calibrationData }),
   setAccuracyMetrics: (accuracyMetrics) => set({ accuracyMetrics }),
+  setPredStats: (predStats) => set({ predStats }),
   setLoading: (loading) => set({ loading }),
   setLastFetched: (timestamp) => set({ lastFetched: timestamp }),
 }));
