@@ -21,11 +21,11 @@ class AIAnalysisSchema(BaseModel):
     sources_consulted: str
 
 AVAILABLE_MODELS = [
-    'gemini-2.0-flash',                 # Latest standard model
-    'gemini-2.0-flash-lite-preview-02-05', # Latest lite model
-    'gemini-1.5-pro',                   # Strongest reasoning
-    'gemini-1.5-flash',                 # Standard fallback
-    'gemini-1.5-flash-8b',              # Fast fallback
+    'gemini-3.6-flash',                 # Latest standard model (Workhorse)
+    'gemini-3.5-flash-lite',            # Latest lite model
+    'gemini-3.1-pro-preview',           # Strongest reasoning
+    'gemini-3.5-flash',                 # Standard fallback
+    'gemini-3-pro-preview',             # Pro fallback
 ]
 class GeminiClient:
     """Client for Google Gemini AI with automatic model failover"""
