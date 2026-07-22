@@ -90,7 +90,8 @@ class GeminiClient:
         model_to_try = self._get_available_model()
         if not model_to_try:
             logger.error("All Gemini models exhausted")
-            return self._default_response("All AI models currently unavailable")
+            last_error = getattr(self, '_last_quota_error', "All AI models currently unavailable due to quota limits")
+            return self._default_response(f"API Quota Error: {last_error}")
         
         actual_model_used = model_to_try  # Will be updated if failover happens
         
@@ -104,7 +105,6 @@ class GeminiClient:
             
             research_config = GenerateContentConfig(
                 temperature=0.3,
-                tools=[Tool(google_search=GoogleSearch())],
             )
             
             research_response, research_model = self._generate_with_retry(
