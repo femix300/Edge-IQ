@@ -192,23 +192,26 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
-# Cache Configuration
+# Cache Configuration — uses django-redis when REDIS_URL is set (Render), else in-memory
 REDIS_URL = config('REDIS_URL', default='')
 
 if REDIS_URL:
     CACHES = {
         'default': {
-            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'BACKEND': 'django_redis.cache.RedisCache',
             'LOCATION': REDIS_URL,
-            'OPTIONS': {'db': '1'},
-            'TIMEOUT': 60,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'IGNORE_EXCEPTIONS': True,  # degrade gracefully if Redis is briefly unavailable
+            },
+            'TIMEOUT': 300,  # 5 minutes default TTL
         }
     }
 else:
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'TIMEOUT': 60,
+            'TIMEOUT': 300,
         }
     }
 
@@ -244,12 +247,13 @@ AUTHENTICATION_BACKENDS = [
 # CORS - Allow React frontend
 CORS_ALLOW_ALL_ORIGINS = True
 CSRF_TRUSTED_ORIGINS = [
-    'https://edgeiq-frontend-enccd3ywba-uc.a.run.app',
-    'https://edgeiq-backend-981082317040.us-central1.run.app',
+    'https://edge-iq-psi.vercel.app',
+    'https://edge-iq.onrender.com',
     'http://localhost:3000',
     'http://localhost:5173',
-]  # Tighten this in production
-CSRF_TRUSTED_ORIGINS = ["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:3000", "http://127.0.0.1:8000"]
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+]
 CSRF_COOKIE_SECURE = False
 CSRF_COOKIE_HTTPONLY = False
 
