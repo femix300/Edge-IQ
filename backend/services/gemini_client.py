@@ -161,10 +161,11 @@ class GeminiClient:
             return result
             
         except Exception as e:
-            logger.error(f"Error in Gemini Pipeline: {str(e)}")
+            error_msg = f"API Error: {str(e)}"
+            logger.error(f"Error in Gemini Pipeline: {error_msg}")
             import traceback
             traceback.print_exc()
-            return self._default_response()
+            return self._default_response(custom_message=error_msg)
 
     def _build_research_prompt(self, title, description, context=None):
         """Build prompt for the Research phase"""

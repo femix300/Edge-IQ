@@ -49,3 +49,21 @@ def health_check(request):
         "response_time_ms": round((time.time() - start) * 1000, 1),
         "services": services,
     })
+
+@require_http_methods(["GET"])
+def list_models(request):
+    try:
+        c = GeminiClient()
+        if not c.client:
+            return JsonResponse({"error": "Gemini client not initialized (no API key)"}, status=500)
+            
+        # Call the Google GenAI SDK to list models
+        available_models = []
+        for model in c.client.models.list():
+            available_models.append(model.name)
+            
+        return JsonResponse({
+            "models_available_on_this_api_key": available_models
+        })
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
