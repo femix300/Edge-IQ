@@ -44,7 +44,7 @@ def fetch_resolved_markets(limit=200):
     """
     cache_key = f"resolved_markets_{limit}"
     cached = cache.get(cache_key)
-    if cached is not None:
+    if cached:  # only return if non-empty — don't serve stale empty results
         return cached
 
     import random
@@ -65,7 +65,7 @@ def fetch_resolved_markets(limit=200):
                     "order": "closedTime",      # Bug 1 fix: sort by close time
                     "ascending": "false",        # Bug 1 fix: newest first
                 },
-                timeout=15,
+                timeout=30,  # generous timeout — Render cold starts can be slow
             )
             resp.raise_for_status()
             events = resp.json()
@@ -169,5 +169,6 @@ def fetch_resolved_markets(limit=200):
         f"fetch_resolved_markets: {len(results)} markets with clear winner "
         f"fetched across {offset // page_size + 1} page(s)"
     )
-    cache.set(cache_key, results, timeout=60 * 60) # Cache for 1 hour
+    if results:  # only cache if we got actual data
+        cache.set(cache_key, results, timeout=60 * 60)  # Cache for 1 hour
     return results
