@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type {
   Market,
   Signal,
@@ -250,18 +251,32 @@ interface CalibrationState {
   setLastFetched: (timestamp: number) => void;
 }
 
-export const useCalibrationStore = create<CalibrationState>((set) => ({
-  calibrationData: null,
-  accuracyMetrics: null,
-  predStats: null,
-  loading: false,
-  lastFetched: null,
-  setCalibrationData: (calibrationData) => set({ calibrationData }),
-  setAccuracyMetrics: (accuracyMetrics) => set({ accuracyMetrics }),
-  setPredStats: (predStats) => set({ predStats }),
-  setLoading: (loading) => set({ loading }),
-  setLastFetched: (timestamp) => set({ lastFetched: timestamp }),
-}));
+export const useCalibrationStore = create<CalibrationState>()(
+  persist(
+    (set) => ({
+      calibrationData: null,
+      accuracyMetrics: null,
+      predStats: null,
+      loading: false,
+      lastFetched: null,
+      setCalibrationData: (calibrationData) => set({ calibrationData }),
+      setAccuracyMetrics: (accuracyMetrics) => set({ accuracyMetrics }),
+      setPredStats: (predStats) => set({ predStats }),
+      setLoading: (loading) => set({ loading }),
+      setLastFetched: (timestamp) => set({ lastFetched: timestamp }),
+    }),
+    {
+      name: "edgeiq-calibration", // localStorage key
+      partialize: (state) => ({
+        // Only persist the data, not loading state
+        calibrationData: state.calibrationData,
+        accuracyMetrics: state.accuracyMetrics,
+        predStats: state.predStats,
+        lastFetched: state.lastFetched,
+      }),
+    }
+  )
+);
 
 interface AuthState {
   isAuthenticated: boolean;
