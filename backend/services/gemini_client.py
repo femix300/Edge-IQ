@@ -169,18 +169,18 @@ class GeminiClient:
 
     def _build_research_prompt(self, title, description, context=None):
         """Build prompt for the Research phase"""
-        prompt = f"""You are a quantitative analyst. Analyze the following prediction market event:
-Title: {title}
-Description: {description}
-
-Search the web for the latest news regarding this event.
-Write a comprehensive summary including:
-1. A final probability percentage (0-100)
-2. Your confidence level in this prediction (0-100)
-3. A 2-3 sentence reasoning summary
-4. 3-5 key factors driving this prediction
-5. The main sources or news you found
-"""
+        prompt = f"""
+        Act as a professional prediction market analyst.
+        Event: {title}
+        Description: {description}
+        Current Market Context: {json.dumps(context) if context else 'None'}
+        
+        Based on your extensive knowledge base and training data, provide a comprehensive research report detailing:
+        1. Current status and recent developments
+        2. Key factors that will influence the outcome
+        3. A reasoned estimation of the probability (0-100)
+        4. Your confidence level in this estimation
+        """
         if context:
             prompt += f"\nCurrent Market Price: ₦{context.get('current_price', 'N/A')}"
             prompt += f"\nMarket Implied Probability: {context.get('implied_probability', 'N/A')}%"
