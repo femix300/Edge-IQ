@@ -14,6 +14,7 @@ from .tasks import async_scan_markets, async_analyze_market
 from celery.result import AsyncResult
 import logging
 import uuid
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,12 @@ class MarketViewSet(viewsets.GenericViewSet):
         category = request.query_params.get('category')
         page = int(request.query_params.get('page', 1))
         page_size = int(request.query_params.get('page_size', 100))
+
+        market_version = cache.get("market_version", 0)
+        cache_key = f"market_list_v{market_version}_{status_filter}_{category}_{page}_{page_size}"
+        cached_response = cache.get(cache_key)
+        if cached_response:
+            return Response(cached_response)
 
         statuses = [s.strip() for s in status_filter.split(',') if s.strip()]
 
@@ -108,12 +115,14 @@ class MarketViewSet(viewsets.GenericViewSet):
         end = start + page_size
         page_data = markets[start:end]
 
-        return Response({
+        response_data = {
             "count": len(markets),
             "next": f"/api/markets/?page={page+1}&page_size={page_size}" if end < len(markets) else None,
             "previous": f"/api/markets/?page={page-1}&page_size={page_size}" if page > 1 else None,
             "results": page_data,
-        })
+        }
+        cache.set(cache_key, response_data, timeout=60 * 5) # 5 minutes cache
+        return Response(response_data)
 
     # ── retrieve ──────────────────────────────────────────────────────
     def retrieve(self, request, pk=None):
@@ -141,6 +150,10 @@ class MarketViewSet(viewsets.GenericViewSet):
     def scan(self, request):
         """POST /api/markets/scan/ — trigger Agent 01 market scanner"""
         try:
+            # Invalidate market list cache
+            version = cache.get("market_version", 0)
+            cache.set("market_version", version + 1, timeout=None)
+
             max_results = int(request.data.get('max_results', 20))
             min_volume = float(request.data.get('min_volume', 0))
             min_liquidity = float(request.data.get('min_liquidity', 0))

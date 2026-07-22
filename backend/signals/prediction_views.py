@@ -106,7 +106,7 @@ def resolve_predictions(request):
     look up a specific market by conditionId.
     """
     import requests
-    import time as _time
+    import concurrent.futures
 
     CLOB_URL = "https://clob.polymarket.com"
 
@@ -124,17 +124,14 @@ def resolve_predictions(request):
         skipped_not_resolved = 0
         errors = 0
 
-        for doc in docs:
+        def process_doc(doc):
             p = doc.to_dict()
             market_id = p.get("market_id", "")
             source = p.get("source", "unknown")
 
-            # Only Polymarket markets can be auto-resolved
             if source != "polymarket" or not market_id.startswith("poly_0x"):
-                skipped_non_poly += 1
-                continue
+                return {"type": "skip_non_poly"}
 
-            # Extract conditionId: "poly_0xABC..." → "0xABC..."
             condition_id = market_id[len("poly_"):]
 
             try:
@@ -145,55 +142,75 @@ def resolve_predictions(request):
                 resp.raise_for_status()
                 market = resp.json()
 
-                # Market must be closed
                 if not market.get("closed", False):
-                    skipped_not_resolved += 1
-                    continue
+                    return {"type": "skip_not_resolved", "title": p.get("market_title")}
 
-                # Find winner from tokens array
-                # Each token has: {"outcome": "Yes"/"No", "winner": true/false}
                 tokens = market.get("tokens", [])
                 winner_token = next(
                     (t for t in tokens if t.get("winner") is True), None
                 )
 
                 if not winner_token:
-                    # Closed but no winner declared yet (settlement pending)
-                    skipped_not_resolved += 1
-                    logger.debug(
-                        f"Closed but no winner yet: {p.get('market_title')!r}"
-                    )
-                    continue
+                    return {"type": "skip_not_resolved", "title": p.get("market_title")}
 
-                # CLOB uses "Yes"/"No", predictions store "YES"/"NO"
                 winner = winner_token.get("outcome", "").upper()
                 if winner not in ("YES", "NO"):
-                    skipped_not_resolved += 1
-                    continue
+                    return {"type": "skip_not_resolved"}
 
                 predicted_outcome = p.get("predicted_outcome", "YES")
                 was_correct = predicted_outcome == winner
 
-                fs.update(Collection.PREDICTIONS, doc.id, {
-                    "status": "resolved",
-                    "resolved_outcome": winner,
+                return {
+                    "type": "resolved",
+                    "doc_id": doc.id,
+                    "title": p.get("market_title"),
+                    "winner": winner,
+                    "predicted_outcome": predicted_outcome,
                     "was_correct": was_correct,
+                }
+            except requests.exceptions.Timeout:
+                return {"type": "error", "condition_id": condition_id, "error": "Timeout"}
+            except Exception as e:
+                return {"type": "error", "condition_id": condition_id, "error": str(e)}
+
+        batch = fs.db.batch()
+        batch_count = 0
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(process_doc, docs))
+
+        for res in results:
+            if res["type"] == "skip_non_poly":
+                skipped_non_poly += 1
+            elif res["type"] == "skip_not_resolved":
+                skipped_not_resolved += 1
+                if "title" in res:
+                    logger.debug(f"Closed but no winner yet: {res['title']!r}")
+            elif res["type"] == "error":
+                errors += 1
+                logger.warning(f"Error for {res.get('condition_id', '')}: {res['error']}")
+            elif res["type"] == "resolved":
+                doc_ref = fs.db.collection(Collection.PREDICTIONS).document(res["doc_id"])
+                batch.update(doc_ref, {
+                    "status": "resolved",
+                    "resolved_outcome": res["winner"],
+                    "was_correct": res["was_correct"],
                 })
                 updated += 1
+                batch_count += 1
                 logger.info(
-                    f"Resolved '{p.get('market_title')}': "
-                    f"predicted={predicted_outcome} actual={winner} "
-                    f"correct={was_correct}"
+                    f"Resolved '{res['title']}': "
+                    f"predicted={res['predicted_outcome']} actual={res['winner']} "
+                    f"correct={res['was_correct']}"
                 )
+                
+                if batch_count >= 500:
+                    batch.commit()
+                    batch = fs.db.batch()
+                    batch_count = 0
 
-            except requests.exceptions.Timeout:
-                errors += 1
-                logger.warning(f"Timeout: conditionId={condition_id!r}")
-            except Exception as e:
-                errors += 1
-                logger.warning(f"Error: conditionId={condition_id!r}: {e}")
-
-            _time.sleep(0.15)
+        if batch_count > 0:
+            batch.commit()
 
         # Bust stats cache
         global _stats_cache
@@ -276,19 +293,29 @@ def unresolve_all_predictions(request):
     Resets ALL predictions back to pending so Sync can re-resolve fresh.
     """
     try:
-        # Stream doc IDs first, then update via fs.update() which creates a
-        # fresh document reference internally. Calling doc.reference.update()
-        # directly on a streamed reference triggers a Firestore SDK gRPC bug:
-        # '_UnaryStreamMultiCallable' object has no attribute '_retry'.
-        doc_ids = [doc.id for doc in fs.db.collection(Collection.PREDICTIONS).stream()]
+        # Stream doc IDs first, then use batch to update them
+        docs = list(fs.db.collection(Collection.PREDICTIONS).stream())
         count = 0
-        for doc_id in doc_ids:
-            fs.update(Collection.PREDICTIONS, doc_id, {
+        
+        batch = fs.db.batch()
+        batch_count = 0
+
+        for doc in docs:
+            batch.update(doc.reference, {
                 "status": "pending",
                 "resolved_outcome": None,
                 "was_correct": None,
             })
             count += 1
+            batch_count += 1
+            
+            if batch_count >= 500:
+                batch.commit()
+                batch = fs.db.batch()
+                batch_count = 0
+                
+        if batch_count > 0:
+            batch.commit()
 
         global _stats_cache
         _stats_cache = {"data": None, "ts": 0}

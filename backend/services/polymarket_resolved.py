@@ -16,6 +16,7 @@ Fix history:
 import requests
 import json
 import logging
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 GAMMA_URL = "https://gamma-api.polymarket.com"
@@ -41,6 +42,11 @@ def fetch_resolved_markets(limit=200):
             "closed_time":      "...",
         }
     """
+    cache_key = f"resolved_markets_{limit}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     import random
     import hashlib
 
@@ -163,4 +169,5 @@ def fetch_resolved_markets(limit=200):
         f"fetch_resolved_markets: {len(results)} markets with clear winner "
         f"fetched across {offset // page_size + 1} page(s)"
     )
+    cache.set(cache_key, results, timeout=60 * 60) # Cache for 1 hour
     return results

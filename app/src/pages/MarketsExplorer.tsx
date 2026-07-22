@@ -170,7 +170,7 @@ MarketRow.displayName = "MarketRow";
 
 const MarketsExplorer = () => {
   const navigate = useNavigate();
-  const { filteredMarkets, markets, loading, error, viewMode, filters, setMarkets, setLoading, setError, setViewMode, setFilters } = useMarketStore();
+  const { filteredMarkets, markets, loading, error, viewMode, filters, setMarkets, setLoading, setError, setViewMode, setFilters, lastFetched, setLastFetched } = useMarketStore();
   const { activeSignals } = useSignalStore();
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
@@ -180,24 +180,28 @@ const MarketsExplorer = () => {
     setScanning(true);
     try {
       await scanMarkets({ max_results: 100 });
-      await fetchMarkets();
+      await fetchMarkets(true); // force refresh
     } catch { /* ignore */ }
     setScanning(false);
   };
 
-  const fetchMarkets = useCallback(async () => {
-    setLoading(true);
+  const fetchMarkets = useCallback(async (force = false) => {
+    const isStale = !lastFetched || (Date.now() - lastFetched > 2 * 60 * 1000); // 2 mins local SWR buffer
+    if (!force && !isStale && markets.length > 0) return; // Skip fetch if fresh locally
+    
+    if (markets.length === 0) setLoading(true); // Only show loader if we have no stale data
     setError(null);
+    
     try {
       const res = await getMarkets({ status: "open", page_size: 200 });
       const seen = new Set<string>();
       const enriched = (res.results || [])
-        .filter((m) => {
+        .filter((m: any) => {
           if (seen.has(m.id)) return false;
           seen.add(m.id);
           return true;
         })
-        .map((m) => {
+        .map((m: any) => {
         const signal = activeSignals.find((s) => s.market_id === m.bayse_event_id || s.market_event_id === m.bayse_event_id);
         return {
           ...m,
@@ -208,12 +212,15 @@ const MarketsExplorer = () => {
         };
       });
       setMarkets(enriched);
+      setLastFetched(Date.now());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch markets");
+      if (markets.length === 0) {
+        setError(err instanceof Error ? err.message : "Failed to fetch markets");
+      }
     } finally {
       setLoading(false);
     }
-  }, [activeSignals, setMarkets, setLoading, setError]);
+  }, [activeSignals, setMarkets, setLoading, setError, markets.length, lastFetched, setLastFetched]);
 
   useEffect(() => {
     fetchMarkets();
@@ -434,7 +441,7 @@ const MarketsExplorer = () => {
       ) : error && markets.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-[#ff4757] mb-2">{error}</p>
-          <button onClick={fetchMarkets} className="mt-4 px-4 py-2 bg-[#00d4ff]/10 text-[#00d4ff] rounded-lg text-sm">
+          <button onClick={() => fetchMarkets(true)} className="mt-4 px-4 py-2 bg-[#00d4ff]/10 text-[#00d4ff] rounded-lg text-sm">
             Retry Now
           </button>
         </div>

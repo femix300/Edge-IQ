@@ -4,7 +4,7 @@ import { getCalibrationData, getAccuracyMetrics, getPredictionStats, resolvePred
 import { Target, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 
 const Calibration = () => {
-  const { calibrationData, accuracyMetrics, loading, setCalibrationData, setAccuracyMetrics, setLoading } = useCalibrationStore();
+  const { calibrationData, accuracyMetrics, loading, setCalibrationData, setAccuracyMetrics, setLoading, setLastFetched } = useCalibrationStore();
   const [tooltip, setTooltip] = useState<{x: number, y: number, p: any} | null>(null);
   const [predStats, setPredStats] = useState<any>(null);
   const [resolving, setResolving] = useState(false);
@@ -13,9 +13,19 @@ const Calibration = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true);
+      const now = Date.now();
+      const hasData = !!calibrationData && !!accuracyMetrics;
+
+      // SWR: only show spinner if we have absolutely nothing to show yet
+      if (!hasData) setLoading(true);
+
+      // Always fetch in the background — never skip to guarantee latest data
       try {
-        const [calRes, accRes, predRes] = await Promise.all([getCalibrationData(), getAccuracyMetrics(), getPredictionStats()]);
+        const [calRes, accRes, predRes] = await Promise.all([
+          getCalibrationData(),
+          getAccuracyMetrics(),
+          getPredictionStats(),
+        ]);
         if (predRes.success) setPredStats(predRes);
         if (calRes.success) {
           setCalibrationData({
@@ -25,11 +35,14 @@ const Calibration = () => {
           });
         }
         if (accRes.success) setAccuracyMetrics(accRes.metrics);
-      } catch { /* ignore */ }
+        setLastFetched(now);
+      } catch { /* ignore — stale data stays visible if request fails */ }
+
       setLoading(false);
     };
     loadData();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount — SWR: always fetch fresh, show stale instantly
 
   const chartData = calibrationData?.calibration_points?.map((p: any) => ({
     predicted: p.predicted,

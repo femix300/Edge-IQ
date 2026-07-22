@@ -44,6 +44,8 @@ interface MarketState {
   setViewMode: (mode: "grid" | "list") => void;
   setFilters: (filters: Partial<MarketState["filters"]>) => void;
   applyFilters: () => void;
+  lastFetched: number | null;
+  setLastFetched: (ts: number) => void;
 }
 
 export const useMarketStore = create<MarketState>((set, get) => ({
@@ -57,6 +59,8 @@ export const useMarketStore = create<MarketState>((set, get) => ({
   loading: false,
   error: null,
   viewMode: "grid",
+  lastFetched: null,
+  setLastFetched: (ts) => set({ lastFetched: ts }),
   filters: {
     categories: [],
     status: "open",
@@ -237,18 +241,22 @@ interface CalibrationState {
   calibrationData: CalibrationData | null;
   accuracyMetrics: AccuracyMetrics | null;
   loading: boolean;
+  lastFetched: number | null;
   setCalibrationData: (data: CalibrationData | null) => void;
   setAccuracyMetrics: (metrics: AccuracyMetrics | null) => void;
   setLoading: (loading: boolean) => void;
+  setLastFetched: (timestamp: number) => void;
 }
 
 export const useCalibrationStore = create<CalibrationState>((set) => ({
   calibrationData: null,
   accuracyMetrics: null,
   loading: false,
+  lastFetched: null,
   setCalibrationData: (calibrationData) => set({ calibrationData }),
   setAccuracyMetrics: (accuracyMetrics) => set({ accuracyMetrics }),
   setLoading: (loading) => set({ loading }),
+  setLastFetched: (timestamp) => set({ lastFetched: timestamp }),
 }));
 
 interface AuthState {
