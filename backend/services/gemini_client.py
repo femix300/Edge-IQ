@@ -77,7 +77,7 @@ class GeminiClient:
                         return None, model
                 else:
                     logger.error(f"Error with model {model}: {error_str}")
-                    return None, model
+                    raise e
         return None, model
     
     def estimate_probability(self, event_title, event_description, market_context=None):
