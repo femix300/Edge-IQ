@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useCalibrationStore } from "@/stores";
 import { getCalibrationData, getAccuracyMetrics, getPredictionStats, resolvePredictions, manualResolvePrediction, unresolvePredictions } from "@/lib/api";
 import { Target, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 
 const Calibration = () => {
+  const navigate = useNavigate();
   const { calibrationData, accuracyMetrics, loading, predStats, setCalibrationData, setAccuracyMetrics, setLoading, setLastFetched, setPredStats } = useCalibrationStore();
   const [tooltip, setTooltip] = useState<{x: number, y: number, p: any} | null>(null);
   const [resolving, setResolving] = useState(false);
@@ -273,7 +275,15 @@ const Calibration = () => {
                       <>
                         {resolvedPreds.map((p: any, i: number) => (
                           <tr key={`r-${i}`} className="border-b border-[#1a2030] hover:bg-[#0a0e17]">
-                            <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">{p.market_title}</td>
+                            <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">
+                              <button 
+                                onClick={() => navigate(`/market/${p.market_id}`, { state: { staticOnly: true } })}
+                                className="hover:text-[#00d4ff] hover:underline text-left truncate w-full"
+                                title={p.market_title}
+                              >
+                                {p.market_title}
+                              </button>
+                            </td>
                             <td className="py-2 pr-4 text-right text-[#00d4ff]">{p.ai_probability}%</td>
                             <td className="py-2 pr-4 text-right text-[#8b92a8]">{p.market_probability}%</td>
                             <td className="py-2 pr-4 text-center">
@@ -312,7 +322,15 @@ const Calibration = () => {
 
                         {pendingPreds.map((p: any, i: number) => (
                           <tr key={`p-${i}`} className="border-b border-[#1a2030] hover:bg-[#0a0e17] opacity-70">
-                            <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">{p.market_title}</td>
+                            <td className="py-2 pr-4 text-[#dee2f5] max-w-[220px] truncate">
+                              <button 
+                                onClick={() => navigate(`/market/${p.market_id}`, { state: { staticOnly: true } })}
+                                className="hover:text-[#00d4ff] hover:underline text-left truncate w-full"
+                                title={p.market_title}
+                              >
+                                {p.market_title}
+                              </button>
+                            </td>
                             <td className="py-2 pr-4 text-right text-[#00d4ff]">{p.ai_probability}%</td>
                             <td className="py-2 pr-4 text-right text-[#8b92a8]">{p.market_probability}%</td>
                             <td className="py-2 pr-4 text-center">

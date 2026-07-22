@@ -12,6 +12,8 @@ import {
   updatePassword,
   signOut,
   onAuthStateChanged,
+  setPersistence,
+  browserSessionPersistence,
   type User,
 } from "firebase/auth";
 
@@ -27,15 +29,20 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
+// Use session persistence so users are logged out when they close the browser
+setPersistence(auth, browserSessionPersistence).catch((error) => {
+  console.error("Auth persistence error:", error);
+});
+
 export function getAuthToken(): string | null {
-  return localStorage.getItem("edgeiq_firebase_token");
+  return sessionStorage.getItem("edgeiq_firebase_token");
 }
 
 export function setAuthToken(token: string | null): void {
   if (token) {
-    localStorage.setItem("edgeiq_firebase_token", token);
+    sessionStorage.setItem("edgeiq_firebase_token", token);
   } else {
-    localStorage.removeItem("edgeiq_firebase_token");
+    sessionStorage.removeItem("edgeiq_firebase_token");
   }
 }
 
