@@ -25,7 +25,7 @@ def health_check(request):
         c = GeminiClient()
         if c.client:
             c.client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.6-flash',
                 contents='ok',
                 config={'max_output_tokens': 3}
             )
