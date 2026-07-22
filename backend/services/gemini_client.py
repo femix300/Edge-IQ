@@ -3,7 +3,7 @@ Google Gemini API Client with Auto-Failover
 Two-Step Agent Pipeline for Production-Grade Structured Outputs
 """
 from google import genai
-from google.genai.types import GenerateContentConfig, GoogleSearch
+from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
 from pydantic import BaseModel
 from decouple import config
 import json
@@ -104,7 +104,7 @@ class GeminiClient:
             
             research_config = GenerateContentConfig(
                 temperature=0.3,
-                tools=[GoogleSearch()],
+                tools=[Tool(google_search=GoogleSearch())],
             )
             
             research_response, research_model = self._generate_with_retry(
