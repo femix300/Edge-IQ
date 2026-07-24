@@ -30,8 +30,9 @@ const TOASTS: Record<string, string> = {
 const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => void }) => {
   const edge = signal.edge_score;
   const edgeColor = edge >= 20 ? "text-[#00ff88]" : edge >= 10 ? "text-[#ffa502]" : "text-[#ff4757]";
-  const label = signal.direction === "BUY" ? "BUY" : signal.direction === "SELL" ? "AVOID" : "WAIT";
+  const label = signal.direction || "WAIT";
   const labelColor = signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ff4757]" : "text-[#ffa502]";
+  const dotColor = signal.direction === "BUY" ? "bg-[#00ff88]" : signal.direction === "SELL" ? "bg-[#ff4757]" : "bg-[#ffa502]";
   const category = (signal.category || "other") as keyof typeof CATEGORY_COLORS;
   const catColor = CATEGORY_COLORS[category] || CATEGORY_COLORS.other;
   const catLabel = CATEGORY_LABELS[category] || "Other";
@@ -66,7 +67,7 @@ const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => v
           </div>
         </div>
         <div className="flex items-center gap-2 ml-3">
-          <div className={`w-2 h-2 rounded-full animate-pulse-dot ${edge >= 20 ? "bg-[#00ff88]" : "bg-[#ffa502]"}`} />
+          <div className={`w-2 h-2 rounded-full animate-pulse-dot ${dotColor}`} />
           <span className={`text-xs font-bold uppercase ${labelColor}`}>{label}</span>
         </div>
       </div>
