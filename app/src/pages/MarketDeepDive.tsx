@@ -481,8 +481,8 @@ const MarketDeepDive = () => {
           if (Array.isArray(history) && history.length > 0) {
             setPriceData(history.map((h: any) => ({
               time: new Date(h.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-              price: Number(h.price.toFixed(4)),
-              prob: Number((h.price * 100).toFixed(2)),
+              price: Number(Number(h.price || 0).toFixed(4)),
+              prob: Number((Number(h.price || 0) * 100).toFixed(2)),
             })));
           }
           if (ob) setOrderBookData(ob);
@@ -538,8 +538,8 @@ const MarketDeepDive = () => {
           setPriceLoading(false);
           setPriceData(history.map((h) => ({
             time: new Date(h.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-            price: Number(h.price.toFixed(4)),
-            prob: Number((h.price * 100).toFixed(2)),
+            price: Number(Number(h.price || 0).toFixed(4)),
+            prob: Number((Number(h.price || 0) * 100).toFixed(2)),
           })));
         } catch {
           setPriceData(Array.from({ length: 20 }).map((_, i) => ({
@@ -687,7 +687,7 @@ const MarketDeepDive = () => {
           <div className="flex items-center gap-3">
             <div className="text-right">
               <p className="text-xs text-[#8b92a8]">Implied Probability</p>
-              <p className="text-2xl font-bold font-mono-num text-[#00d4ff]">{prob.toFixed(1)}%</p>
+              <p className="text-2xl font-bold font-mono-num text-[#00d4ff]">{Number(prob).toFixed(1)}%</p>
             </div>
             <div className="text-right">
               <p className="text-xs text-[#8b92a8]">Current Price</p>
@@ -754,9 +754,9 @@ const MarketDeepDive = () => {
         ) : orderBookChartData.length > 0 ? (
           <>
             <div className="grid grid-cols-3 gap-4 mb-4">
-              <StatBlock label="Best Bid" value={`₦${bestBid.toFixed(3)}`} color="text-[#00ff88]" />
-              <StatBlock label="Spread" value={`${spread.toFixed(4)}`} color="text-[#ffa502]" />
-              <StatBlock label="Best Ask" value={`₦${bestAsk.toFixed(3)}`} color="text-[#ff4757]" />
+              <StatBlock label="Best Bid" value={`₦${Number(bestBid).toFixed(3)}`} color="text-[#00ff88]" />
+              <StatBlock label="Spread" value={`${Number(spread).toFixed(4)}`} color="text-[#ffa502]" />
+              <StatBlock label="Best Ask" value={`₦${Number(bestAsk).toFixed(3)}`} color="text-[#ff4757]" />
             </div>
             <div className="h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -791,7 +791,7 @@ const MarketDeepDive = () => {
             AI Probability Analysis
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <StatBlock label="Market Says" value={`${prob.toFixed(1)}%`} color="text-[#ffa502]" />
+            <StatBlock label="Market Says" value={`${Number(prob).toFixed(1)}%`} color="text-[#ffa502]" />
             <StatBlock label="AI Estimates" value={`${Number(aiAnalysis.probability).toFixed(1)}%`} color="text-[#00ff88]" />
             <StatBlock label="Confidence" value={`${aiAnalysis.confidence}%`} color="text-[#00d4ff]" />
           </div>
