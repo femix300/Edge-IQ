@@ -62,6 +62,11 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
                     age = now - analyzed_at
                     if age.total_seconds() < 4 * 3600:  # 4 hours
                         logger.info(f"Using cached AI analysis for {market_event_id} (age: {age.total_seconds()/60:.1f} mins)")
+                        
+                        # Add a 5-second delay so the frontend "analyzing" state doesn't disappear too quickly
+                        import time
+                        time.sleep(5)
+                        
                         return {
                             "probability": cached.get("probability", 50),
                             "confidence": cached.get("confidence", 0),
