@@ -60,10 +60,10 @@ const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => v
       <div className="flex items-start justify-between mb-4 pt-6">
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-[#dee2f5] text-sm leading-snug line-clamp-2 mb-1">
-            {signal.market_title}
+            {signal.outcome_title ? `${signal.market_title} - ${signal.outcome_title}` : signal.market_title}
           </h3>
           <div className="flex items-center gap-2 text-xs text-[#8b92a8]">
-            <span className="font-mono-num">ID: {signal.market_event_id?.slice(0, 8)}</span>
+            <span className="font-mono-num">ID: {signal.outcome_id ? signal.outcome_id?.slice(0,8) : signal.market_event_id?.slice(0, 8)}</span>
           </div>
         </div>
         <div className="flex items-center gap-2 ml-3">

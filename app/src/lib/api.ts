@@ -103,18 +103,25 @@ async function getUsdToNgnRate(): Promise<number> {
   return cachedRate!;
 }
 
-function convertPolymarketPrices<T extends { source?: string; current_price?: number; volume_24h?: number; total_volume?: number; liquidity?: number }>(
+function convertPolymarketPrices<T extends { source?: string; current_price?: number; volume_24h?: number; total_volume?: number; liquidity?: number; outcomes?: any[] }>(
   market: T,
   rate: number
 ): T {
   if (!market.source?.toLowerCase().includes("polymarket")) return market;
-  return {
+  const converted: any = {
     ...market,
     current_price: market.current_price != null ? +(market.current_price * rate).toFixed(2) : market.current_price,
     volume_24h: market.volume_24h != null ? +(market.volume_24h * rate).toFixed(2) : market.volume_24h,
     total_volume: market.total_volume != null ? +(market.total_volume * rate).toFixed(2) : market.total_volume,
     liquidity: market.liquidity != null ? +(market.liquidity * rate).toFixed(2) : market.liquidity,
   };
+  if (Array.isArray(market.outcomes)) {
+    converted.outcomes = market.outcomes.map((o: any) => ({
+      ...o,
+      current_price: o.current_price != null ? +(o.current_price * rate).toFixed(2) : o.current_price,
+    }));
+  }
+  return converted;
 }
 // ─────────────────────────────────────────────────────────────
 
@@ -188,7 +195,8 @@ export async function analyzeMarket(
 export async function analyzeMarketStream(
   id: string,
   userBankroll: number,
-  onProgress: (event: { step: string; agent: number; total: number; message: string }) => void
+  onProgress: (event: { step: string; agent: number; total: number; message: string }) => void,
+  outcomeParams?: { outcome_id?: string; outcome_title?: string }
 ): Promise<{
   success: boolean;
   market: Market;
@@ -200,10 +208,13 @@ export async function analyzeMarketStream(
   if (auth.currentUser) {
     try { token = await auth.currentUser.getIdToken(true); setAuthToken(token); } catch {}
   }
+  const payload: any = { user_bankroll: userBankroll };
+  if (outcomeParams?.outcome_id) payload.outcome_id = outcomeParams.outcome_id;
+  if (outcomeParams?.outcome_title) payload.outcome_title = outcomeParams.outcome_title;
   const response = await fetch(`${API_BASE}/markets/${id}/analyze_stream/`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${getAuthToken()}` },
-    body: JSON.stringify({ user_bankroll: userBankroll }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) throw new Error(`SSE connection failed: ${response.statusText}`);

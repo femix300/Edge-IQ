@@ -41,7 +41,7 @@ def async_scan_markets(status='open', min_volume=0, min_liquidity=0, max_results
 
 
 @shared_task
-def async_analyze_market(market_id, user_bankroll=10000):
+def async_analyze_market(market_id, user_bankroll=10000, outcome_id=None, outcome_title=None):
     """
     Run full analysis pipeline in background
     """
@@ -49,12 +49,17 @@ def async_analyze_market(market_id, user_bankroll=10000):
     from agents.ai_probability import estimate_probability
     from agents.signal_generator import generate_signal
     
-    logger.info(f"Starting background analysis for market {market_id}...")
+    logger.info(f"Starting background analysis for market {market_id} (outcome: {outcome_id})...")
     
     try:
-        quant_metrics = analyze_market(market_id)
-        ai_result = estimate_probability(market_id)
-        result = generate_signal(market_event_id=market_id, user_bankroll=user_bankroll)
+        quant_metrics = analyze_market(market_id, outcome_id=outcome_id)
+        ai_result = estimate_probability(market_id, outcome_title=outcome_title)
+        result = generate_signal(
+            market_event_id=market_id, 
+            user_bankroll=user_bankroll, 
+            outcome_id=outcome_id, 
+            outcome_title=outcome_title
+        )
         
         # Trigger quota check in background (non-blocking) after a pipeline run
         async_check_quotas.delay()

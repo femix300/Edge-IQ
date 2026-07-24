@@ -218,24 +218,36 @@ class MarketViewSet(viewsets.GenericViewSet):
                 return Response({"success": False, "error": "Market not found"}, status=404)
 
             user_bankroll = float(request.data.get('user_bankroll', 10000))
+            outcome_id = request.data.get('outcome_id')
+            outcome_title = request.data.get('outcome_title')
 
             # Sync latest market data
             market["id"] = market.get("bayse_event_id", pk)
             fs.set(Collection.MARKETS, pk, market, merge=True)
 
             # Agent 02: Quant
-            quant_metrics = analyze_market(pk)
+            quant_metrics = analyze_market(pk, outcome_id=outcome_id)
 
             # Agent 03: AI
-            ai_result = estimate_probability(pk)
+            ai_result = estimate_probability(pk, outcome_title=outcome_title)
 
             # Agent 04: Signal
-            signal_doc = generate_signal(market_event_id=pk, user_id=self._get_uid_from_request(request), user_bankroll=user_bankroll)
+            signal_doc = generate_signal(
+                market_event_id=pk, 
+                user_id=self._get_uid_from_request(request), 
+                user_bankroll=user_bankroll,
+                outcome_id=outcome_id,
+                outcome_title=outcome_title
+            )
 
             # Latest AI analysis
+            ai_filters = [("market_id", "==", pk)]
+            if outcome_title:
+                ai_filters.append(("outcome_title", "==", outcome_title))
+                
             latest_ai = fs.query(
                 Collection.AI_ANALYSES,
-                filters=[("market_id", "==", pk)],
+                filters=ai_filters,
                 order_by=("analyzed_at", True),
                 limit=1,
             )

@@ -19,7 +19,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def estimate_probability(market_event_id: str, market_context: dict | None = None):
+def estimate_probability(market_event_id: str, market_context: dict | None = None, outcome_title: str | None = None):
     """
     Use Gemini AI to estimate true probability of a market outcome.
     Reads market from Firestore, writes AIAnalysis back to Firestore.
@@ -27,6 +27,7 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
     Args:
         market_event_id: Firestore doc ID (= bayse_event_id)
         market_context: Optional pre-fetched market data dict
+        outcome_title: Title of the specific outcome for multi-dimensional markets
 
     Returns:
         Dict with probability, confidence, reasoning + firestore_doc_id
@@ -50,6 +51,8 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
         title = market.get("title", "Unknown")
         description = market.get("description", "")
         
+        prompt_title = f"{title} - Outcome: {outcome_title}" if outcome_title else title
+        
         if not market_context:
             market_context = {
                 "current_price": float(market.get("current_price", 0)),
@@ -60,9 +63,14 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
         current_implied_pct = market_context["implied_probability"] * 100
         
         # --- 2. Check Cache (4 hours) ---
+        # Cache key should include outcome_title to avoid collision
+        cache_filters = [("market_id", "==", market_event_id)]
+        if outcome_title:
+            cache_filters.append(("outcome_title", "==", outcome_title))
+            
         latest_ai = fs.query(
             Collection.AI_ANALYSES,
-            filters=[("market_id", "==", market_event_id)],
+            filters=cache_filters,
             order_by=("analyzed_at", True),
             limit=1,
         )
@@ -87,7 +95,7 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
                         edge = abs(cached_prob - current_implied_pct)
                         
                         if edge >= 5:
-                            logger.info(f"Using cached AI analysis for {market_event_id} (age: {age.total_seconds()/60:.1f} mins) because edge is {edge:.1f}% (>= 5%)")
+                            logger.info(f"Using cached AI analysis for {market_event_id} ({outcome_title}) (age: {age.total_seconds()/60:.1f} mins) because edge is {edge:.1f}% (>= 5%)")
                             
                             # Add a 5-second delay so the frontend "analyzing" state doesn't disappear too quickly
                             import time
@@ -103,13 +111,13 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
                                 "model_used": cached.get("model_used", "cached"),
                             }
                         else:
-                            logger.info(f"Discarding cached AI analysis for {market_event_id} because edge is only {edge:.1f}% (< 5%). Re-running analysis.")
+                            logger.info(f"Discarding cached AI analysis for {market_event_id} ({outcome_title}) because edge is only {edge:.1f}% (< 5%). Re-running analysis.")
 
-        logger.info(f"Estimating probability for: {title}")
+        logger.info(f"Estimating probability for: {prompt_title}")
 
         # Call Gemini - this now returns the actual model used in result['model_used']
         result = gemini_client.estimate_probability(
-            event_title=title,
+            event_title=prompt_title,
             event_description=description,
             market_context=market_context,
         )
@@ -120,7 +128,7 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
         logger.info(f"AI Result: probability={result.get('probability')}, confidence={result.get('confidence')}")
 
         # Save AI analysis to Firestore (includes the actual model used)
-        doc_id = save_ai_analysis(market_event_id, title, result, actual_model)
+        doc_id = save_ai_analysis(market_event_id, title, result, actual_model, outcome_title)
 
         # Debug logging
         logger.info(f"AI Analysis saved to Firestore with ID: {doc_id}")
@@ -140,7 +148,7 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
         raise
 
 
-def save_ai_analysis(market_event_id: str, market_title: str, result: dict, model_used: str = None) -> str:
+def save_ai_analysis(market_event_id: str, market_title: str, result: dict, model_used: str = None, outcome_title: str = None) -> str:
     """
     Save AI analysis to Firestore. Document ID includes timestamp for history.
     Returns the Firestore doc ID.
@@ -150,7 +158,8 @@ def save_ai_analysis(market_event_id: str, market_title: str, result: dict, mode
     try:
         from django.utils import timezone
         now = timezone.now()
-        doc_id = f"{market_event_id}_{now.isoformat()}"
+        # Use outcome_title in doc_id to avoid collision between dimensions analyzed at the same time
+        doc_id = f"{market_event_id}_{outcome_title}_{now.isoformat()}" if outcome_title else f"{market_event_id}_{now.isoformat()}"
 
         # Use the actual model passed from estimate_probability, or fallback
         actual_model = model_used or result.get("model_used", "gemini-flash-latest")
@@ -158,6 +167,7 @@ def save_ai_analysis(market_event_id: str, market_title: str, result: dict, mode
         doc = {
             "market_id": market_event_id,
             "market_title": market_title,
+            "outcome_title": outcome_title,
             "probability": result.get("probability", 50),           # Original field name
             "confidence": result.get("confidence", 0),              # Original field name
             "reasoning": result.get("reasoning", ""),               # Original field name

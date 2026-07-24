@@ -323,26 +323,51 @@ class PolymarketClient:
         normalized = []
         for event in events_list:
             event_tags = event.get('tags') or []
-            event_category = event.get('category')
             event_title = event.get('title') or ''
             child_markets = event.get('markets') or []
-            child = next((m for m in child_markets if not m.get('closed')), child_markets[0] if child_markets else None)
-            if not child:
-                continue
-            child['_event_tags'] = event_tags
-            child['_event_category'] = event_category
-            child['_event_title'] = event_title
-            child['image'] = child.get('image') or event.get('image')
-            child['liquidity'] = child.get('liquidity') or event.get('liquidity') or 0
-            child['volume'] = child.get('volume') or event.get('volume') or 0
-            child['volume24hr'] = child.get('volume24hr') or event.get('volume24hr') or 0
-            try:
-                normalized.append(self._normalize_market(child))
-            except Exception as e:
-                logger.warning(f"Failed to normalize event {event.get('id', '?')}: {e}")
+            if not child_markets:
                 continue
 
-        logger.info(f"Polymarket: fetched and normalized {len(normalized)} markets from events")
+            outcomes = []
+            for child in child_markets:
+                if child.get('closed'):
+                    continue
+                child['_event_tags'] = event_tags
+                child['_event_title'] = event_title
+                try:
+                    norm_child = self._normalize_market(child)
+                    outcomes.append({
+                        "bayse_market_id": norm_child['bayse_market_id'],
+                        "title": child.get('groupItemTitle') or norm_child['title'],
+                        "current_price": norm_child['current_price'],
+                        "implied_probability": norm_child['implied_probability']
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to normalize child market: {e}")
+                    continue
+
+            if not outcomes:
+                continue
+
+            # Base the main event doc on the first active child for shared fields
+            try:
+                base_child = next(m for m in child_markets if not m.get('closed'))
+                base_child['_event_tags'] = event_tags
+                base_child['_event_title'] = event_title
+                base_child['image'] = base_child.get('image') or event.get('image')
+                base_child['liquidity'] = event.get('liquidity') or base_child.get('liquidity') or 0
+                base_child['volume'] = event.get('volume') or base_child.get('volume') or 0
+                base_child['volume24hr'] = event.get('volume24hr') or base_child.get('volume24hr') or 0
+                
+                norm_event = self._normalize_market(base_child)
+                norm_event['is_multi_dimensional'] = len(outcomes) > 1
+                norm_event['outcomes'] = outcomes
+                normalized.append(norm_event)
+            except Exception as e:
+                logger.warning(f"Failed to build normalized event {event.get('id', '?')}: {e}")
+                continue
+
+        logger.info(f"Polymarket: fetched and normalized {len(normalized)} events")
         return normalized
 
     def get_market_detail(self, condition_id: str) -> dict | None:

@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000):
+def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000, outcome_id=None, outcome_title=None):
     """
     Generator that yields SSE events as each agent completes.
     Final event contains the full analysis result.
@@ -41,7 +41,7 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000):
         # Agent 02: Quant Analyzer
         yield f"data: {json.dumps({'type': 'progress', 'step': 'quant', 'agent': 2, 'total': 4, 'message': 'Running quantitative analysis...'})}\n\n"
         try:
-            quant_metrics = analyze_market(market_event_id)
+            quant_metrics = analyze_market(market_event_id, outcome_id=outcome_id)
         except Exception as e:
             logger.error(f"Quant analysis failed: {e}")
             quant_metrics = {
@@ -56,7 +56,7 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000):
         # Agent 03: AI Probability
         yield f"data: {json.dumps({'type': 'progress', 'step': 'ai', 'agent': 3, 'total': 4, 'message': 'Querying Gemini AI...'})}\n\n"
         try:
-            ai_result = estimate_probability(market_event_id)
+            ai_result = estimate_probability(market_event_id, outcome_title=outcome_title)
         except Exception as e:
             logger.error(f"AI analysis failed: {e}")
             ai_result = {
@@ -70,7 +70,7 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000):
         yield f"data: {json.dumps({'type': 'progress', 'step': 'signal', 'agent': 4, 'total': 4, 'message': 'Generating trade signals...'})}\n\n"
         try:
             logger.info(f"SSE generating signal for user_id={user_id}")
-            signal_doc = generate_signal(market_event_id=market_event_id, user_id=user_id, user_bankroll=user_bankroll)
+            signal_doc = generate_signal(market_event_id=market_event_id, user_id=user_id, user_bankroll=user_bankroll, outcome_id=outcome_id, outcome_title=outcome_title)
         except Exception as e:
             logger.error(f"Signal generation failed: {e}")
             signal_doc = None
@@ -121,16 +121,21 @@ def sse_analyze_view(request, pk=None):
     View that returns a StreamingHttpResponse for SSE.
     """
     user_bankroll = 10000
+    outcome_id = None
+    outcome_title = None
     if request.method == 'POST':
         try:
             body = json.loads(request.body)
             user_bankroll = float(body.get('user_bankroll', 10000))
+            outcome_id = body.get('outcome_id')
+            outcome_title = body.get('outcome_title')
         except Exception as e:
-            logger.error(f"SSE Firebase auth failed: {e}")
-            pass
+            logger.error(f"SSE body parse failed: {e}")
+            outcome_id = None
+            outcome_title = None
 
     response = StreamingHttpResponse(
-        analyze_stream(pk, user_id, user_bankroll),
+        analyze_stream(pk, user_id, user_bankroll, outcome_id=outcome_id, outcome_title=outcome_title),
         content_type='text/event-stream',
         status=200
     )

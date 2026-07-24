@@ -24,6 +24,8 @@ export interface Market {
   last_scanned_at?: string;
   edge_score?: number;
   time_remaining_hours?: number;
+  is_multi_dimensional?: boolean;
+  outcomes?: any[];
 }
 
 export interface QuantMetrics {
@@ -60,6 +62,8 @@ export interface Signal {
   market_id: string;
   market_title: string;
   market_event_id: string;
+  outcome_id?: string;
+  outcome_title?: string;
   source?: string;
   category?: string;
   direction: 'BUY' | 'SELL' | 'WAIT';

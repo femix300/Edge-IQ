@@ -103,13 +103,16 @@ const formatTimeRemaining = (closesAt?: string | null) => {
 };
 
 // ─── Static Market Detail View ───────────────────────────────────────────────
-const StaticMarketView = ({ market, onDeepDive }: { market: any; onDeepDive: () => void }) => {
+const StaticMarketView = ({ market, onDeepDive, selectedOutcome, setSelectedOutcome }: { market: any; onDeepDive: () => void; selectedOutcome: any; setSelectedOutcome: (o: any) => void }) => {
   const catColor = CATEGORY_CONFIG[market.category?.toLowerCase()] || CATEGORY_CONFIG.other;
-  const prob = Number(market.implied_probability) || (Number(market.current_price) * 100);
+  const targetObj = selectedOutcome || market;
+  const prob = Number(targetObj.implied_probability) || (Number(targetObj.current_price) * 100);
   const timeLeft = formatTimeRemaining(market.closes_at);
   const liquidityLabel = market.liquidity > 50000 ? { label: "Deep", color: "text-[#00ff88]" }
     : market.liquidity > 10000 ? { label: "Moderate", color: "text-[#ffa502]" }
     : { label: "Thin", color: "text-[#ff4757]" };
+
+  const isMulti = market.is_multi_dimensional && !selectedOutcome;
 
   return (
     <div className="space-y-5">
@@ -139,18 +142,45 @@ const StaticMarketView = ({ market, onDeepDive }: { market: any; onDeepDive: () 
             )}
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-[#dee2f5] leading-snug mb-2">
-            {market.title}
+            {selectedOutcome ? `${market.title} - ${selectedOutcome.title}` : market.title}
           </h1>
-          <p className="text-xs text-[#5a6070] font-mono">ID: {market.bayse_event_id}</p>
+          <p className="text-xs text-[#5a6070] font-mono">ID: {selectedOutcome ? selectedOutcome.bayse_market_id : market.bayse_event_id}</p>
         </div>
       </div>
 
-      {/* Key Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-4 flex flex-col gap-1">
+      {isMulti ? (
+        <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-6">
+          <h3 className="text-sm font-semibold text-[#dee2f5] mb-4">Select an Outcome to Analyze</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {market.outcomes?.map((outcome: any) => (
+              <div 
+                key={outcome.bayse_market_id}
+                onClick={() => setSelectedOutcome(outcome)}
+                className="bg-[#0a0e17] rounded-xl border border-[#1a2030] p-4 cursor-pointer hover:border-[#00d4ff]/40 hover:bg-[#00d4ff]/5 transition-all"
+              >
+                <h4 className="font-semibold text-[#dee2f5] mb-2">{outcome.title}</h4>
+                <div className="flex gap-4">
+                  <div>
+                    <p className="text-[10px] text-[#8b92a8] uppercase">Price</p>
+                    <p className="font-mono-num text-[#dee2f5]">₦{Number(outcome.current_price || 0).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-[#8b92a8] uppercase">Implied Prob</p>
+                    <p className="font-mono-num text-[#00d4ff]">{Number(outcome.implied_probability || (Number(outcome.current_price) * 100)).toFixed(1)}%</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Key Stats Row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-4 flex flex-col gap-1">
           <p className="text-[10px] uppercase text-[#8b92a8] tracking-wider">Current Price</p>
           <p className="text-2xl font-bold font-mono-num text-[#dee2f5]">
-            ₦{Number(market.current_price || 0).toFixed(2)}
+            ₦{Number(targetObj.current_price || 0).toFixed(2)}
           </p>
         </div>
         <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-4 flex flex-col gap-1">
@@ -268,16 +298,28 @@ const StaticMarketView = ({ market, onDeepDive }: { market: any; onDeepDive: () 
               Run our 4-agent pipeline — market scanner, signal generator, quant engine, and AI analyst — to find your edge.
             </p>
           </div>
-          <button
-            onClick={onDeepDive}
-            className="flex-shrink-0 flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm text-[#0a0e17] transition-all hover:brightness-110 hover:scale-105 active:scale-100"
-            style={{ background: "linear-gradient(135deg, #00d4ff, #00ff88)" , boxShadow: "0 0 24px rgba(0,212,255,0.35)" }}
-          >
-            <BrainCircuit className="w-4 h-4" />
-            Deep Dive
-          </button>
+          <div className="flex items-center gap-3">
+            {selectedOutcome && (
+              <button
+                onClick={() => setSelectedOutcome(null)}
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-3.5 rounded-xl font-bold text-sm text-[#8b92a8] bg-[#0a0e17] border border-[#1a2030] hover:text-[#dee2f5] transition-all"
+              >
+                Back to Options
+              </button>
+            )}
+            <button
+              onClick={onDeepDive}
+              className="flex-shrink-0 flex items-center gap-2 px-7 py-3.5 rounded-xl font-bold text-sm text-[#0a0e17] transition-all hover:brightness-110 hover:scale-105 active:scale-100"
+              style={{ background: "linear-gradient(135deg, #00d4ff, #00ff88)" , boxShadow: "0 0 24px rgba(0,212,255,0.35)" }}
+            >
+              <BrainCircuit className="w-4 h-4" />
+              Deep Dive
+            </button>
+          </div>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };
@@ -309,6 +351,7 @@ const MarketDeepDive = () => {
     return !isSignal;
   });
   const [deepDiveTriggered, setDeepDiveTriggered] = useState(false);
+  const [selectedOutcome, setSelectedOutcome] = useState<any | null>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -435,9 +478,12 @@ const MarketDeepDive = () => {
     setError(null);
     setPipelineProgress(null);
     try {
+      const outcomeParams = selectedOutcome
+        ? { outcome_id: selectedOutcome.bayse_market_id, outcome_title: selectedOutcome.title }
+        : undefined;
       const result = await analyzeMarketStream(id!, 10000, (progress) => {
         setPipelineProgress(progress);
-      });
+      }, outcomeParams);
       if (result.success) {
         setSelectedMarket(result.market);
         setSignal(result.signal);
@@ -555,7 +601,7 @@ const MarketDeepDive = () => {
           Back to Markets
         </button>
         {market ? (
-          <StaticMarketView market={market} onDeepDive={handleDeepDive} />
+          <StaticMarketView market={market} onDeepDive={handleDeepDive} selectedOutcome={selectedOutcome} setSelectedOutcome={setSelectedOutcome} />
         ) : (
           <div className="text-center py-16 text-[#8b92a8]">
             <p>Market data not found. <button onClick={() => navigate("/markets")} className="text-[#00d4ff] underline">Go back</button></p>
@@ -589,10 +635,12 @@ const MarketDeepDive = () => {
                 </span>
               )}
               <span className="text-xs text-[#8b92a8] font-mono-num">
-                ID: {market?.bayse_event_id?.slice(0, 12)}...
+                ID: {selectedOutcome ? selectedOutcome.bayse_market_id?.slice(0, 12) : market?.bayse_event_id?.slice(0, 12)}...
               </span>
             </div>
-            <h1 className="text-xl md:text-2xl font-bold text-[#dee2f5]">{market?.title || "Unknown Market"}</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-[#dee2f5]">
+              {selectedOutcome ? `${market?.title} - ${selectedOutcome.title}` : (market?.title || "Unknown Market")}
+            </h1>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">

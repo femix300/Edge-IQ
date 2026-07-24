@@ -106,15 +106,27 @@ def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
                     skipped += 1
                     continue
 
+                outcomes = []
+                for m_data in markets_data:
+                    m_price = Decimal(str(m_data.get('outcome1Price', 0.5)))
+                    m_prob = bayse_client.calculate_implied_probability(m_price)
+                    outcomes.append({
+                        "bayse_market_id": str(m_data.get('id', '')),
+                        "title": str(m_data.get('title', m_data.get('outcomeLabel', f"Outcome {len(outcomes)+1}"))),
+                        "current_price": float(m_price),
+                        "implied_probability": m_prob
+                    })
+
+                # Fallback to root-level for backwards compatibility
                 market_data = markets_data[0]
                 market_id = str(market_data.get('id', ''))
                 current_price = Decimal(str(market_data.get('outcome1Price', 0.5)))
+                implied_prob = bayse_client.calculate_implied_probability(current_price)
 
                 closes_at = parse_timestamp(event.get('closingDate'))
                 resolved_at = parse_timestamp(event.get('resolutionDate'))
                 opens_at = parse_timestamp(event.get('openingDate'))
 
-                implied_prob = bayse_client.calculate_implied_probability(current_price)
                 signal_score = calculate_signal_potential(total_volume, liquidity, closes_at)
 
                 # --- Create market document (don't write to Firestore yet) ---
@@ -126,6 +138,8 @@ def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
                     "category": category,
                     "current_price": float(current_price),
                     "implied_probability": implied_prob,
+                    "is_multi_dimensional": len(outcomes) > 1,
+                    "outcomes": outcomes,
                     "volume_24h": 0,
                     "total_volume": float(total_volume),
                     "liquidity": float(liquidity),

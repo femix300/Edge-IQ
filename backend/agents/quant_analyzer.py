@@ -17,12 +17,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def analyze_market(market_id):
+def analyze_market(market_id, outcome_id=None):
     """
     Full quantitative analysis on a market, using Firestore.
     
     Args:
         market_id: bayse_event_id (UUID string)
+        outcome_id: bayse_market_id of the specific outcome for multi-dimensional markets
     Returns:
         dict of quant metrics
     """
@@ -32,15 +33,27 @@ def analyze_market(market_id):
         if not market:
             raise ValueError(f"Market {market_id} not found in Firestore")
 
-        title = market.get('title', 'Unknown')
-        bayse_market_id = market.get('bayse_market_id', '')
         source = market.get('source', 'bayse')  # 'bayse' or 'polymarket'
+        
+        # If outcome_id is provided, find it in the outcomes array
+        if outcome_id and market.get('is_multi_dimensional'):
+            outcomes = market.get('outcomes', [])
+            outcome = next((o for o in outcomes if o.get('bayse_market_id') == outcome_id), None)
+            if not outcome:
+                raise ValueError(f"Outcome {outcome_id} not found in event {market_id}")
+            
+            title = outcome.get('title', market.get('title', 'Unknown'))
+            bayse_market_id = outcome_id
+        else:
+            title = market.get('title', 'Unknown')
+            bayse_market_id = market.get('bayse_market_id', '')
+
         logger.info(f"Analyzing market: {title} [source={source}]")
 
         # Fetch data — routed by source
         price_history = fetch_price_history(market_id, bayse_market_id, title, source=source)
         ticker_data = fetch_ticker_data(market_id, bayse_market_id, title, source=source)
-        order_book_data = fetch_order_book(market_id, source=source)
+        order_book_data = fetch_order_book(market_id, bayse_market_id, source=source)
 
         # Calculate metrics
         momentum_metrics = calculate_momentum_metrics(price_history)
@@ -49,8 +62,9 @@ def analyze_market(market_id):
 
         quant_metrics = {**momentum_metrics, **volume_metrics, **order_book_metrics}
 
-        # Save to Firestore
-        save_quant_metrics_to_firestore(market_id, title, quant_metrics)
+        # Save to Firestore (use outcome_id as suffix if present)
+        doc_id = f"{market_id}_{outcome_id}" if outcome_id else market_id
+        save_quant_metrics_to_firestore(doc_id, title, quant_metrics)
 
         logger.info(f"Analysis complete for {title}")
         logger.info(f"  Momentum: {quant_metrics['momentum_score']} ({quant_metrics['momentum_direction']})")
@@ -122,15 +136,16 @@ def fetch_ticker_data(market_id, bayse_market_id, title, source='bayse'):
         return {}
 
 
-def fetch_order_book(market_id, source='bayse'):
+def fetch_order_book(market_id, bayse_market_id=None, source='bayse'):
     """Fetch order book — routed by source."""
     if source == 'polymarket':
         from services.polymarket_client import polymarket_client
         market = fs.get(Collection.MARKETS, market_id)
-        token_id = market.get('bayse_market_id') if market else None
+        # For Polymarket, if bayse_market_id is passed (the specific outcome), use it. Otherwise use the first one.
+        token_id = bayse_market_id if bayse_market_id else (market.get('bayse_market_id') if market else None)
         return polymarket_client.get_order_book(token_id) if token_id else {}
     try:
-        outcome_id = bayse_client.get_outcome_id(market_id, outcome_label='YES')
+        outcome_id = bayse_client.get_outcome_id(market_id, outcome_label='YES', market_id=bayse_market_id)
         if not outcome_id:
             return {}
         return bayse_client.get_order_book(outcome_id=outcome_id, depth=10) or {}

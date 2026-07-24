@@ -89,16 +89,22 @@ const MarketCard = memo(({ market, onClick, onDeepDive, hasEdge }: { market: Mar
       <h3 className="font-semibold text-[#dee2f5] text-sm leading-snug line-clamp-2 min-h-[40px] mb-3">
         {market.title}
       </h3>
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="bg-[#0a0e17] rounded-lg p-2">
-          <p className="text-[10px] text-[#8b92a8] uppercase">Price</p>
-          <p className="text-sm font-bold font-mono-num text-[#dee2f5]">{formatPrice(market.current_price || 0)}</p>
+      {!market.is_multi_dimensional ? (
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-[#0a0e17] rounded-lg p-2">
+            <p className="text-[10px] text-[#8b92a8] uppercase">Price</p>
+            <p className="text-sm font-bold font-mono-num text-[#dee2f5]">{formatPrice(market.current_price || 0)}</p>
+          </div>
+          <div className="bg-[#0a0e17] rounded-lg p-2">
+            <p className="text-[10px] text-[#8b92a8] uppercase">Implied Prob</p>
+            <p className="text-sm font-bold font-mono-num text-[#00d4ff]">{formatProb(prob)}</p>
+          </div>
         </div>
-        <div className="bg-[#0a0e17] rounded-lg p-2">
-          <p className="text-[10px] text-[#8b92a8] uppercase">Implied Prob</p>
-          <p className="text-sm font-bold font-mono-num text-[#00d4ff]">{formatProb(prob)}</p>
+      ) : (
+        <div className="bg-[#0a0e17] rounded-lg p-2 mb-3 flex items-center justify-center h-[52px]">
+          <p className="text-xs text-[#8b92a8]">Multiple Outcomes Available</p>
         </div>
-      </div>
+      )}
       <div className="flex items-center justify-between text-xs text-[#8b92a8]">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1">
@@ -113,9 +119,25 @@ const MarketCard = memo(({ market, onClick, onDeepDive, hasEdge }: { market: Mar
         </span>
       </div>
       {onDeepDive && (
-        <button onClick={(e) => { e.stopPropagation(); onDeepDive(); }} className="mt-3 w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-[#00d4ff]/10 to-[#00ff88]/10 border border-[#00d4ff]/20 rounded-lg text-xs font-bold text-[#00d4ff] hover:from-[#00d4ff]/20 hover:to-[#00ff88]/20 transition-all">
-          <BrainCircuit className="w-3.5 h-3.5" />
-          Deep Dive
+        <button onClick={(e) => { 
+          e.stopPropagation(); 
+          if (market.is_multi_dimensional) {
+            onClick(); // acts as view options
+          } else {
+            onDeepDive(); 
+          }
+        }} className="mt-3 w-full flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-[#00d4ff]/10 to-[#00ff88]/10 border border-[#00d4ff]/20 rounded-lg text-xs font-bold text-[#00d4ff] hover:from-[#00d4ff]/20 hover:to-[#00ff88]/20 transition-all">
+          {market.is_multi_dimensional ? (
+            <>
+              <List className="w-3.5 h-3.5" />
+              View Options
+            </>
+          ) : (
+            <>
+              <BrainCircuit className="w-3.5 h-3.5" />
+              Deep Dive
+            </>
+          )}
         </button>
       )}
     </div>
@@ -148,16 +170,36 @@ const MarketRow = memo(({ market, onClick, onDeepDive, hasEdge }: { market: Mark
           )}
         </div>
       </td>
-      <td className="py-3 px-4 text-sm font-mono-num text-[#dee2f5]">{formatPrice(market.current_price || 0)}</td>
-      <td className="py-3 px-4 text-sm font-mono-num text-[#00d4ff]">{formatProb(prob)}</td>
+      <td className="py-3 px-4 text-sm font-mono-num text-[#dee2f5]">
+        {!market.is_multi_dimensional ? formatPrice(market.current_price || 0) : "-"}
+      </td>
+      <td className="py-3 px-4 text-sm font-mono-num text-[#00d4ff]">
+        {!market.is_multi_dimensional ? formatProb(prob) : "-"}
+      </td>
       <td className="py-3 px-4 text-sm font-mono-num text-[#8b92a8]">{formatVolume(market.liquidity || 0)}</td>
       <td className="py-3 px-4 text-sm font-mono-num text-[#8b92a8]">{formatTimeRemaining(market.time_remaining_hours, market.status)}</td>
       <td className="py-3 px-4">
         <div className="flex items-center gap-2">
           {onDeepDive && (
-            <button onClick={(e) => { e.stopPropagation(); onDeepDive(); }} className="flex items-center gap-1 px-2 py-1 bg-[#00d4ff]/10 border border-[#00d4ff]/20 rounded text-[10px] font-bold text-[#00d4ff] hover:bg-[#00d4ff]/20 transition-all">
-              <BrainCircuit className="w-3 h-3" />
-              Deep Dive
+            <button onClick={(e) => { 
+              e.stopPropagation(); 
+              if (market.is_multi_dimensional) {
+                onClick();
+              } else {
+                onDeepDive(); 
+              }
+            }} className="flex items-center gap-1 px-2 py-1 bg-[#00d4ff]/10 border border-[#00d4ff]/20 rounded text-[10px] font-bold text-[#00d4ff] hover:bg-[#00d4ff]/20 transition-all">
+              {market.is_multi_dimensional ? (
+                <>
+                  <List className="w-3 h-3" />
+                  Options
+                </>
+              ) : (
+                <>
+                  <BrainCircuit className="w-3 h-3" />
+                  Deep Dive
+                </>
+              )}
             </button>
           )}
           <ChevronRight className="w-4 h-4 text-[#00d4ff]" />

@@ -21,7 +21,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankroll: float = 10000) -> dict:
+def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankroll: float = 10000, outcome_id: str = None, outcome_title: str = None) -> dict:
     """
     Generate a complete trading signal for a market.
 
@@ -34,6 +34,8 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
 
     Args:
         market_event_id: Firestore doc ID of the market
+        outcome_id: Optional bayse_market_id for multi-dimensional events
+        outcome_title: Optional title of the specific outcome
 
     Returns:
         Signal dict (the Firestore document).
@@ -46,12 +48,17 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
         raise ValueError(f"Market {market_event_id} not found")
 
     # 2. Fetch quant metrics
-    quant = fs.get(Collection.QUANT_METRICS, market_event_id) or {}
+    quant_doc_id = f"{market_event_id}_{outcome_id}" if outcome_id else market_event_id
+    quant = fs.get(Collection.QUANT_METRICS, quant_doc_id) or {}
 
     # 3. Fetch AI analysis (using original field names)
+    ai_filters = [("market_id", "==", market_event_id)]
+    if outcome_title:
+        ai_filters.append(("outcome_title", "==", outcome_title))
+        
     ai_results = fs.query(
         Collection.AI_ANALYSES,
-        filters=[("market_id", "==", market_event_id)],
+        filters=ai_filters,
         order_by=("analyzed_at", True),
         limit=1,
     )
@@ -67,8 +74,15 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
         logger.warning(f"No AI analysis found for market {market_event_id}")
 
     # 4. Calculate signal parameters using original field names
-    current_price = Decimal(str(market.get("current_price", 0)))
-    _raw_implied = float(market.get("implied_probability", 50))
+    if outcome_id and market.get('is_multi_dimensional'):
+        outcomes = market.get('outcomes', [])
+        outcome = next((o for o in outcomes if o.get('bayse_market_id') == outcome_id), {})
+        current_price = Decimal(str(outcome.get("current_price", 0)))
+        _raw_implied = float(outcome.get("implied_probability", 50))
+    else:
+        current_price = Decimal(str(market.get("current_price", 0)))
+        _raw_implied = float(market.get("implied_probability", 50))
+        
     # Normalise: stored as fraction (0-1) → convert to percentage (0-100)
     implied_prob = Decimal(str(_raw_implied * 100 if _raw_implied <= 1.0 else _raw_implied))
     
@@ -146,17 +160,19 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
     # 5. Archive any existing active signal for this market
     _archive_existing_signal(market_event_id)
 
-    # 5b. Save prediction to tracker (upsert — one prediction per market)
+    # 5b. Save prediction to tracker (upsert — one prediction per market/outcome)
     try:
         from utils.firebase_client import Collection as _Collection
-        pred_id = f"{market_event_id}_{user_id}"  # deterministic — no duplicates
+        pred_id = f"{market_event_id}_{outcome_id}_{user_id}" if outcome_id else f"{market_event_id}_{user_id}"  # deterministic — no duplicates
         existing = fs.get(_Collection.PREDICTIONS, pred_id)
         # Only save/update if not already resolved
         if not existing or existing.get("status") == "pending":
             prediction_doc = {
                 "user_id": user_id,
                 "market_id": market_event_id,
+                "outcome_id": outcome_id,
                 "market_title": market.get("title", ""),
+                "outcome_title": outcome_title,
                 "ai_probability": float(ai_prob.quantize(Decimal("0.01"))),
                 "market_probability": float(implied_prob.quantize(Decimal("0.01"))),
                 "predicted_outcome": "YES" if float(ai_prob) > 50 else "NO",
@@ -175,11 +191,13 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
 
     # 6. Write new signal to Firestore
     now = timezone.now()
-    signal_doc_id = f"{market_event_id}_{user_id}"
+    signal_doc_id = f"{market_event_id}_{outcome_id}_{user_id}" if outcome_id else f"{market_event_id}_{user_id}"
     signal_doc = {
         "user_id": user_id,
         "market_id": market_event_id,
+        "outcome_id": outcome_id,
         "market_title": market.get("title", ""),
+        "outcome_title": outcome_title,
         "market_event_id": market.get("bayse_event_id", ""),
         "direction": direction,
         "edge_score": float(edge.quantize(Decimal("0.01"))),

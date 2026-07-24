@@ -284,7 +284,7 @@ class BayseClient:
             logger.warning(f"Order book not available for outcome {outcome_id}: {str(e)}")
             return {}
     
-    def get_outcome_id(self, event_id, outcome_label='YES'):
+    def get_outcome_id(self, event_id, outcome_label='YES', market_id=None):
         """
         Extract outcome ID from an event
         Supports both 'outcomes' array and 'outcome1Id/outcome2Id' formats
@@ -294,6 +294,9 @@ class BayseClient:
             markets = event_detail.get('markets', [])
             
             for market in markets:
+                if market_id and str(market.get('id')) != str(market_id):
+                    continue
+                    
                 # NEW: Check for outcome1Id/outcome1Label format (from your Postman response)
                 outcome1_label = market.get('outcome1Label', '')
                 outcome2_label = market.get('outcome2Label', '')
