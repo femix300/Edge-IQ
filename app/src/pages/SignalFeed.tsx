@@ -31,8 +31,8 @@ const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => v
   const edge = signal.edge_score;
   const edgeColor = edge >= 20 ? "text-[#00ff88]" : edge >= 10 ? "text-[#ffa502]" : "text-[#ff4757]";
   const label = signal.direction || "WAIT";
-  const labelColor = signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ff4757]" : "text-[#ffa502]";
-  const dotColor = signal.direction === "BUY" ? "bg-[#00ff88]" : signal.direction === "SELL" ? "bg-[#ff4757]" : "bg-[#ffa502]";
+  const labelColor = signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ffa502]" : "text-[#8b92a8]";
+  const dotColor = signal.direction === "BUY" ? "bg-[#00ff88]" : signal.direction === "SELL" ? "bg-[#ffa502]" : "bg-[#8b92a8]";
   const category = (signal.category || "other") as keyof typeof CATEGORY_COLORS;
   const catColor = CATEGORY_COLORS[category] || CATEGORY_COLORS.other;
   const catLabel = CATEGORY_LABELS[category] || "Other";

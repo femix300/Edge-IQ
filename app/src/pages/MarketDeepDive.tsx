@@ -724,8 +724,8 @@ const MarketDeepDive = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             <StatBlock label="Edge Score" value={`${signal.edge_score > 0 ? "+" : ""}${Number(signal.edge_score).toFixed(1)}%`} color={Math.abs(signal.edge_score) >= 20 ? "text-[#00ff88]" : Math.abs(signal.edge_score) >= 10 ? "text-[#ffa502]" : "text-[#ff4757]"} tooltip={TOOLTIPS.edge} />
             <StatBlock label="Expected Value" value={`₦${Number(signal.expected_value).toFixed(2)}`} color={signal.expected_value > 0 ? "text-[#00ff88]" : "text-[#ff4757]"} tooltip={TOOLTIPS.ev} />
-            <StatBlock label="Kelly %" value={`${Number(signal.kelly_percentage).toFixed(1)}%`} color="text-[#00d4ff]" tooltip={TOOLTIPS.kelly} />
-            <StatBlock label="Direction" value={signal.direction} color={signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ff4757]" : "text-[#ffa502]"} />
+            <StatBlock label="Kelly %" value={`${(signal.kelly_percentage || 0).toFixed(1)}%`} color="text-[#00d4ff]" tooltip={TOOLTIPS.kelly} />
+            <StatBlock label="Direction" value={signal.direction} color={signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ffa502]" : "text-[#8b92a8]"} />
           </div>
           <div className="mb-4">
             <p className="text-xs text-[#8b92a8] mb-2">Risk Tolerance</p>
