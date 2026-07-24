@@ -170,25 +170,45 @@ const StaticMarketView = ({ market, onDeepDive, selectedOutcome, setSelectedOutc
         <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-6">
           <h3 className="text-sm font-semibold text-[#dee2f5] mb-4">Select an Outcome to Analyze</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {market.outcomes?.map((outcome: any) => (
-              <div 
-                key={outcome.bayse_market_id}
-                onClick={() => setSelectedOutcome(outcome)}
-                className="bg-[#0a0e17] rounded-xl border border-[#1a2030] p-4 cursor-pointer hover:border-[#00d4ff]/40 hover:bg-[#00d4ff]/5 transition-all"
-              >
-                <h4 className="font-semibold text-[#dee2f5] mb-2">{outcome.title}</h4>
-                <div className="flex gap-4">
-                  <div>
-                    <p className="text-[10px] text-[#8b92a8] uppercase">Price</p>
-                    <p className="font-mono-num text-[#dee2f5]">₦{Number(outcome.current_price || 0).toFixed(2)}</p>
+            {market.outcomes?.map((outcome: any) => {
+              const isClosed = outcome.status === 'closed';
+              return (
+                <div 
+                  key={outcome.bayse_market_id}
+                  onClick={() => !isClosed && setSelectedOutcome(outcome)}
+                  className={`bg-[#0a0e17] rounded-xl border p-4 transition-all ${
+                    isClosed
+                      ? 'border-[#1a2030] opacity-50 cursor-not-allowed'
+                      : 'border-[#1a2030] cursor-pointer hover:border-[#00d4ff]/40 hover:bg-[#00d4ff]/5'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-[#dee2f5]">{outcome.title}</h4>
+                    {isClosed && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#ff4757]/10 text-[#ff4757] border border-[#ff4757]/20">
+                        Closed
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <p className="text-[10px] text-[#8b92a8] uppercase">Implied Prob</p>
-                    <p className="font-mono-num text-[#00d4ff]">{Number(outcome.implied_probability || (Number(outcome.current_price) * 100)).toFixed(1)}%</p>
+                  <div className="flex gap-4">
+                    <div>
+                      <p className="text-[10px] text-[#8b92a8] uppercase">Price</p>
+                      <p className="font-mono-num text-[#dee2f5]">₦{Number(outcome.current_price || 0).toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-[#8b92a8] uppercase">Implied Prob</p>
+                      <p className="font-mono-num text-[#00d4ff]">{Number(outcome.implied_probability || (Number(outcome.current_price) * 100)).toFixed(1)}%</p>
+                    </div>
+                    {outcome.closes_at && (
+                      <div>
+                        <p className="text-[10px] text-[#8b92a8] uppercase">Closes</p>
+                        <p className="font-mono-num text-[#8b92a8] text-xs">{new Date(outcome.closes_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : (

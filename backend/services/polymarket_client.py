@@ -329,9 +329,8 @@ class PolymarketClient:
                 continue
 
             outcomes = []
+            total_child_count = len(child_markets)  # Total incl. closed — used for is_multi_dimensional
             for child in child_markets:
-                if child.get('closed'):
-                    continue
                 child['_event_tags'] = event_tags
                 child['_event_title'] = event_title
                 try:
@@ -345,7 +344,7 @@ class PolymarketClient:
                         # Date fields from the child market — each dimension has its own timeline
                         "opens_at": child.get('startDate'),
                         "closes_at": child.get('endDate'),
-                        "status": norm_child.get('status', 'open'),
+                        "status": "closed" if child.get('closed') else norm_child.get('status', 'open'),
                         "time_remaining": norm_child.get('time_remaining', 0),
                     })
                 except Exception as e:
@@ -357,7 +356,7 @@ class PolymarketClient:
 
             # Base the main event doc on the first active child for shared fields
             try:
-                base_child = next(m for m in child_markets if not m.get('closed'))
+                base_child = next((m for m in child_markets if not m.get('closed')), child_markets[0])
                 base_child['_event_tags'] = event_tags
                 base_child['_event_title'] = event_title
                 base_child['image'] = base_child.get('image') or event.get('image')
@@ -366,7 +365,9 @@ class PolymarketClient:
                 base_child['volume24hr'] = event.get('volume24hr') or base_child.get('volume24hr') or 0
                 
                 norm_event = self._normalize_market(base_child)
-                norm_event['is_multi_dimensional'] = len(outcomes) > 1
+                # Use total_child_count (incl. closed) — an event that had multiple children is
+                # always multi-dimensional even if only one is still open
+                norm_event['is_multi_dimensional'] = total_child_count > 1
                 norm_event['outcomes'] = outcomes
                 normalized.append(norm_event)
             except Exception as e:
