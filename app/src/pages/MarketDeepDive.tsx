@@ -123,7 +123,9 @@ const StaticMarketView = ({ market, onDeepDive, selectedOutcome, setSelectedOutc
   const catColor = CATEGORY_CONFIG[market.category?.toLowerCase()] || CATEGORY_CONFIG.other;
   const targetObj = selectedOutcome || market;
   const prob = Number(targetObj.implied_probability) || (Number(targetObj.current_price) * 100);
-  const timeLeft = formatTimeRemaining(market.closes_at);
+  // When a dimension is selected, use its own close date for the time badge and timeline
+  const activeDates = selectedOutcome || market;
+  const timeLeft = formatTimeRemaining(activeDates.closes_at);
   const liquidityLabel = market.liquidity > 50000 ? { label: "Deep", color: "text-[#00ff88]" }
     : market.liquidity > 10000 ? { label: "Moderate", color: "text-[#ffa502]" }
     : { label: "Thin", color: "text-[#ff4757]" };
@@ -238,16 +240,16 @@ const StaticMarketView = ({ market, onDeepDive, selectedOutcome, setSelectedOutc
       <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-5">
         <h3 className="text-sm font-semibold text-[#dee2f5] mb-4 flex items-center gap-2">
           <Clock className="w-4 h-4 text-[#00d4ff]" />
-          Market Timeline
+          {selectedOutcome ? `${selectedOutcome.title} – Timeline` : 'Market Timeline'}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <p className="text-[10px] uppercase text-[#5a6070] mb-1">Opens</p>
-            <p className="text-sm text-[#dee2f5] font-mono-num">{formatDate(market.opens_at)}</p>
+            <p className="text-sm text-[#dee2f5] font-mono-num">{formatDate(activeDates.opens_at)}</p>
           </div>
           <div>
             <p className="text-[10px] uppercase text-[#5a6070] mb-1">Closes</p>
-            <p className="text-sm text-[#dee2f5] font-mono-num">{formatDate(market.closes_at)}</p>
+            <p className="text-sm text-[#dee2f5] font-mono-num">{formatDate(activeDates.closes_at)}</p>
           </div>
           <div>
             <p className="text-[10px] uppercase text-[#5a6070] mb-1">RESOLUTION DATE</p>

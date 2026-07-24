@@ -110,12 +110,18 @@ def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
                 for m_data in markets_data:
                     m_price = Decimal(str(m_data.get('outcome1Price', 0.5)))
                     m_prob = bayse_client.calculate_implied_probability(m_price)
+                    m_closes_at = parse_timestamp(m_data.get('closingDate') or event.get('closingDate'))
+                    m_opens_at = parse_timestamp(m_data.get('openingDate') or event.get('openingDate'))
                     outcomes.append({
                         "bayse_market_id": str(m_data.get('id', '')),
                         "title": str(m_data.get('title', m_data.get('outcomeLabel', f"Outcome {len(outcomes)+1}"))),
                         "current_price": float(m_price),
                         "implied_probability": m_prob,
-                        "description": str(m_data.get('description') or event.get('description', ''))
+                        "description": str(m_data.get('description') or event.get('description', '')),
+                        # Dimension-specific dates
+                        "opens_at": m_opens_at.isoformat() if m_opens_at else None,
+                        "closes_at": m_closes_at.isoformat() if m_closes_at else None,
+                        "status": m_data.get('status', 'open'),
                     })
 
                 # Fallback to root-level for backwards compatibility

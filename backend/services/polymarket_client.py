@@ -341,7 +341,12 @@ class PolymarketClient:
                         "title": child.get('groupItemTitle') or norm_child['title'],
                         "current_price": norm_child['current_price'],
                         "implied_probability": norm_child['implied_probability'],
-                        "description": child.get('description') or event.get('description') or norm_child.get('description', '')
+                        "description": child.get('description') or event.get('description') or norm_child.get('description', ''),
+                        # Date fields from the child market — each dimension has its own timeline
+                        "opens_at": child.get('startDate'),
+                        "closes_at": child.get('endDate'),
+                        "status": norm_child.get('status', 'open'),
+                        "time_remaining": norm_child.get('time_remaining', 0),
                     })
                 except Exception as e:
                     logger.warning(f"Failed to normalize child market: {e}")
