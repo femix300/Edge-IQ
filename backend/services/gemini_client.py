@@ -24,6 +24,7 @@ class AIAnalysisSchema(BaseModel):
     sources_consulted: str
 
 AVAILABLE_MODELS = [
+    # Proven 2.x models
     'gemini-2.5-flash',
     'gemini-2.5-pro',
     'gemini-2.5-flash-lite',
@@ -32,6 +33,15 @@ AVAILABLE_MODELS = [
     'gemini-flash-latest',
     'gemini-pro-latest',
     'gemini-flash-lite-latest',
+    
+    # Newest / Experimental models at the bottom
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-pro-preview',
+    'gemini-3.5-flash',
+    'gemini-3-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-3.1-flash-lite-preview',
 ]
 class GeminiClient:
     """Client for Google Gemini AI with automatic model failover"""
@@ -63,6 +73,54 @@ class GeminiClient:
         self._failed_models.add(model_name)
         logger.warning(f"Model {model_name} exhausted, will try next")
     
+    def check_model_quotas(self):
+        """
+        Check models in AVAILABLE_MODELS for quota and reorder them.
+        Finds the best working model and pushes it to the top.
+        """
+        if not self.client:
+            return
+            
+        logger.info("Checking model quotas...")
+        working_models = []
+        exhausted_models = []
+        
+        global AVAILABLE_MODELS
+        
+        # Test models from top to bottom until we find 1 that works
+        for model in AVAILABLE_MODELS:
+            try:
+                self.client.models.generate_content(
+                    model=model,
+                    contents="test",
+                    config=GenerateContentConfig(max_output_tokens=1)
+                )
+                working_models.append(model)
+                logger.info(f"Model {model} has quota.")
+                break  # Stop checking once we find the best working one
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "503" in error_str or "404" in error_str or "400" in error_str:
+                    logger.warning(f"Model {model} is exhausted or unavailable.")
+                    exhausted_models.append(model)
+                    self._mark_model_exhausted(model)
+                else:
+                    logger.error(f"Model {model} failed check: {error_str}")
+                    exhausted_models.append(model)
+                    self._mark_model_exhausted(model)
+                    
+        # Add remaining unchecked models
+        unchecked = [m for m in AVAILABLE_MODELS if m not in working_models and m not in exhausted_models]
+        
+        # Reorder list: Working models first, then unchecked, then exhausted at the bottom
+        AVAILABLE_MODELS = working_models + unchecked + exhausted_models
+        
+        # Clear the failed models list so the working model can be used, but keep the exhausted ones
+        self._failed_models = set(exhausted_models)
+        
+        logger.info(f"Quota check complete. Best available: {working_models[0] if working_models else 'None'}")
+        return AVAILABLE_MODELS
+
     def _generate_with_retry(self, model, contents, config, max_retries=2):
         """Generate content with retry on quota errors, returns (response, model_used)"""
         for attempt in range(max_retries):

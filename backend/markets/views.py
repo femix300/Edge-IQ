@@ -205,13 +205,13 @@ class MarketViewSet(viewsets.GenericViewSet):
             logger.error(f"Market scan failed: {e}")
             return Response({"success": False, "error": str(e)}, status=500)
 
-    # ── analyze ───────────────────────────────────────────────────────
     @action(detail=True, methods=['post'])
     def analyze(self, request, pk=None):
         """POST /api/markets/{pk}/analyze/ — full 4-agent pipeline"""
         try:
             from agents.quant_analyzer import analyze_market
             from agents.ai_probability import estimate_probability
+            from services.gemini_client import gemini_client
 
             market = fs.get(Collection.MARKETS, pk)
             if not market:
@@ -222,6 +222,9 @@ class MarketViewSet(viewsets.GenericViewSet):
             # Sync latest market data
             market["id"] = market.get("bayse_event_id", pk)
             fs.set(Collection.MARKETS, pk, market, merge=True)
+            
+            # 0. Check API Quotas and push best available to top before starting
+            gemini_client.check_model_quotas()
 
             # Agent 02: Quant
             quant_metrics = analyze_market(pk)
@@ -239,6 +242,9 @@ class MarketViewSet(viewsets.GenericViewSet):
                 order_by=("analyzed_at", True),
                 limit=1,
             )
+            
+            # Check API Quotas again after pipeline to ensure robustness for next request
+            gemini_client.check_model_quotas()
 
             return Response({
                 "success": True,
