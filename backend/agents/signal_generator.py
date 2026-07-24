@@ -174,6 +174,7 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
         "market_event_id": market.get("bayse_event_id", ""),
         "direction": direction,
         "edge_score": float(edge.quantize(Decimal("0.01"))),
+        "abs_edge_score": abs(float(edge.quantize(Decimal("0.01")))),
         "expected_value": float(ev.quantize(Decimal("0.000001"))),
         "market_probability": float(implied_prob.quantize(Decimal("0.01"))),
         "ai_probability": float(ai_prob.quantize(Decimal("0.01"))),
@@ -217,13 +218,15 @@ def get_active_signals(limit=20, min_edge=15, user_id: str = None) -> list[dict]
     filters = [("is_active", "==", True)]
     if user_id:
         filters.append(("user_id", "==", user_id))
+    
+    # We use abs_edge_score so that large negative edges (SELL signals) are caught
     if min_edge:
-        filters.append(("edge_score", ">=", min_edge))
+        filters.append(("abs_edge_score", ">=", min_edge))
 
     return fs.query(
         collection=Collection.SIGNALS,
         filters=filters,
-        order_by=("edge_score", True),
+        order_by=("abs_edge_score", True),
         limit=limit,
     )
 
