@@ -51,14 +51,40 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
         title = market.get("title", "Unknown")
         description = market.get("description", "")
         
+        # For multi-dimensional markets: find the specific outcome's description
+        # and use it instead of the parent market's description
+        if outcome_title:
+            outcomes = market.get("outcomes", [])
+            matched_outcome = None
+            for o in outcomes:
+                if o.get("title") == outcome_title:
+                    matched_outcome = o
+                    break
+            if matched_outcome and matched_outcome.get("description"):
+                description = matched_outcome["description"]
+                logger.info(f"Using outcome-specific description for '{outcome_title}': {description[:100]}")
+            else:
+                # Fallback: clear the parent description to prevent AI from being misled
+                # Use outcome_title directly as context instead
+                description = f"This is a YES/NO question asking: {outcome_title}"
+                logger.info(f"No outcome-specific description found for '{outcome_title}', using derived description.")
+        
         prompt_title = f"{title} - Outcome: {outcome_title}" if outcome_title else title
         
         if not market_context:
-            market_context = {
-                "current_price": float(market.get("current_price", 0)),
-                "implied_probability": float(market.get("implied_probability", 0)),
-                "volume_24h": float(market.get("volume_24h", 0)),
-            }
+            # For specific outcomes, use the outcome's own price/probability
+            if outcome_title and matched_outcome:
+                market_context = {
+                    "current_price": float(matched_outcome.get("current_price", market.get("current_price", 0))),
+                    "implied_probability": float(matched_outcome.get("implied_probability", market.get("implied_probability", 0))),
+                    "volume_24h": float(market.get("volume_24h", 0)),
+                }
+            else:
+                market_context = {
+                    "current_price": float(market.get("current_price", 0)),
+                    "implied_probability": float(market.get("implied_probability", 0)),
+                    "volume_24h": float(market.get("volume_24h", 0)),
+                }
             
         current_implied_pct = market_context["implied_probability"] * 100
         

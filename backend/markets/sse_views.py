@@ -77,12 +77,25 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000, ou
         yield f"data: {json.dumps({'type': 'progress', 'step': 'signal_complete', 'agent': 4, 'total': 4, 'message': 'Signal generation complete'})}\n\n"
 
         # Fetch latest AI analysis
+        # Fetch latest AI analysis (filtered by outcome if this is a sub-market analysis)
+        ai_filters = [("market_id", "==", market_event_id)]
+        if outcome_title:
+            ai_filters.append(("outcome_title", "==", outcome_title))
         latest_ai = fs.query(
             Collection.AI_ANALYSES,
-            filters=[("market_id", "==", market_event_id)],
+            filters=ai_filters,
             order_by=("analyzed_at", True),
             limit=1,
         )
+
+        # If outcome_title query returned nothing, fallback to all analyses for this market
+        if not latest_ai and outcome_title:
+            latest_ai = fs.query(
+                Collection.AI_ANALYSES,
+                filters=[("market_id", "==", market_event_id)],
+                order_by=("analyzed_at", True),
+                limit=1,
+            )
 
         # Final result
         result = {
@@ -90,7 +103,7 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000, ou
             "success": True,
             "market": market,
             "quant_metrics": quant_metrics,
-            "ai_analysis": latest_ai[0] if latest_ai else None,
+            "ai_analysis": latest_ai[0] if latest_ai else ai_result,
             "signal": signal_doc,
             "analyzed_at": timezone.now().isoformat(),
         }

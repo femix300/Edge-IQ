@@ -87,19 +87,35 @@ const formatVolume = (vol: number) => {
   return `₦${Math.round(vol).toLocaleString()}`;
 };
 
-const formatDate = (iso?: string | null) => {
+const formatDate = (iso?: string | null | any) => {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  // Handle Firestore Timestamp objects
+  const dateStr = typeof iso === 'object' && iso._seconds
+    ? new Date(iso._seconds * 1000).toISOString()
+    : typeof iso === 'object' && iso.toDate
+    ? iso.toDate().toISOString()
+    : String(iso);
+  try {
+    return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch { return "—"; }
 };
 
-const formatTimeRemaining = (closesAt?: string | null) => {
+const formatTimeRemaining = (closesAt?: string | null | any) => {
   if (!closesAt) return null;
-  const diff = new Date(closesAt).getTime() - Date.now();
-  if (diff <= 0) return "Closed";
-  const days = Math.floor(diff / 86400000);
-  const hrs = Math.floor((diff % 86400000) / 3600000);
-  if (days > 0) return `${days}d ${hrs}h remaining`;
-  return `${hrs}h remaining`;
+  // Handle Firestore Timestamp objects
+  const dateStr = typeof closesAt === 'object' && closesAt._seconds
+    ? new Date(closesAt._seconds * 1000).toISOString()
+    : typeof closesAt === 'object' && closesAt.toDate
+    ? closesAt.toDate().toISOString()
+    : String(closesAt);
+  try {
+    const diff = new Date(dateStr).getTime() - Date.now();
+    if (diff <= 0) return "Closed";
+    const days = Math.floor(diff / 86400000);
+    const hrs = Math.floor((diff % 86400000) / 3600000);
+    if (days > 0) return `${days}d ${hrs}h remaining`;
+    return `${hrs}h remaining`;
+  } catch { return null; }
 };
 
 // ─── Static Market Detail View ───────────────────────────────────────────────
@@ -537,7 +553,9 @@ const MarketDeepDive = () => {
   };
 
   const market = selectedMarket;
-  const rawProb = Number(market?.implied_probability) || (Number(market?.current_price) * 100);
+  // When a specific outcome is selected, show that outcome's stats, not the parent market's
+  const activeTarget = selectedOutcome || market;
+  const rawProb = Number(activeTarget?.implied_probability) || (Number(activeTarget?.current_price) * 100);
   const prob = Number(rawProb.toFixed(2));
 
   const orderBookChartData = useMemo(() => {
@@ -650,7 +668,7 @@ const MarketDeepDive = () => {
             <div className="text-right">
               <p className="text-xs text-[#8b92a8]">Current Price</p>
               <p className="text-2xl font-bold font-mono-num text-[#dee2f5]">
-                ₦{typeof market?.current_price === "number" ? market.current_price.toFixed(2) : Number(market?.current_price || 0).toFixed(2)}
+                ₦{Number((selectedOutcome?.current_price ?? market?.current_price) || 0).toFixed(2)}
               </p>
             </div>
           </div>
