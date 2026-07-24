@@ -14,17 +14,20 @@ def async_scan_markets(status='open', min_volume=0, min_liquidity=0, max_results
     """
     Run market scanner in background
     """
-    from agents.market_scanner import scan_markets
+    from agents.market_scanner import scan_markets as bayse_scan
+    from agents.polymarket_scanner import scan_markets as poly_scan
     
     logger.info(f"Starting background market scan (status={status})...")
     
     try:
-        result = scan_markets(
+        bayse_results = bayse_scan(
             status=status,
             min_volume=min_volume,
             min_liquidity=min_liquidity,
             max_results=max_results
         )
+        poly_results = poly_scan(max_results=max_results)
+        result = bayse_results + poly_results
         
         cache.set('last_scan_result', result, 300)
         cache.set('last_scan_time', str(timezone.now()), 300)
@@ -65,12 +68,15 @@ def periodic_market_scan():
     """
     Run every 5 minutes to keep markets fresh
     """
-    from agents.market_scanner import scan_markets
+    from agents.market_scanner import scan_markets as bayse_scan
+    from agents.polymarket_scanner import scan_markets as poly_scan
     
     logger.info("Periodic market scan started...")
     
     try:
-        result = scan_markets(status='open', max_results=50)
+        bayse_results = bayse_scan(status='open', max_results=50)
+        poly_results = poly_scan(max_results=50)
+        result = bayse_results + poly_results
         logger.info(f"Periodic scan complete: {len(result)} markets")
         return {'markets_found': len(result), 'timestamp': str(timezone.now())}
         

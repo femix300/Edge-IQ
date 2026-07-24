@@ -129,7 +129,7 @@ def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
                     "volume_24h": 0,
                     "total_volume": float(total_volume),
                     "liquidity": float(liquidity),
-                    "status": status or event.get('status', 'open'),
+                    "status": "closed" if (closes_at and closes_at < timezone.now()) else (status or event.get('status', 'open')),
                     "opens_at": opens_at.isoformat() if opens_at else None,
                     "closes_at": closes_at.isoformat() if closes_at else None,
                     "resolved_at": resolved_at.isoformat() if resolved_at else None,

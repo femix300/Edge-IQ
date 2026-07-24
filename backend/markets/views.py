@@ -171,16 +171,29 @@ class MarketViewSet(viewsets.GenericViewSet):
             min_volume = float(request.data.get('min_volume', 0))
             min_liquidity = float(request.data.get('min_liquidity', 0))
 
-            source = request.data.get('source', 'bayse')
-            if source == 'polymarket':
+            source = request.data.get('source', 'all')
+            markets = []
+            
+            if source in ['all', 'polymarket']:
                 from agents.polymarket_scanner import scan_markets as poly_scan
-                markets = poly_scan(max_results=max_results)
-            else:
-                markets = scan_markets(
+                markets.extend(poly_scan(max_results=max_results))
+                
+            if source in ['all', 'bayse']:
+                markets.extend(scan_markets(
                     max_results=max_results,
                     min_volume=min_volume,
                     min_liquidity=min_liquidity,
-                )
+                ))
+
+            def safe_score(m):
+                try:
+                    return float(m.get("signal_potential_score") or 0)
+                except (TypeError, ValueError):
+                    return 0.0
+                    
+            markets.sort(key=safe_score, reverse=True)
+            if source == 'all':
+                markets = markets[:max_results * 2]
 
             return Response({
                 "success": True,
