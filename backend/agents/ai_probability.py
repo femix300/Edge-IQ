@@ -36,8 +36,30 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
         import datetime
         
         now = timezone.now()
+
+        # --- 1. Read market from Firestore FIRST (needed for edge calculation) ---
+        if market_context:
+            market = market_context
+        else:
+            market = fs.get(Collection.MARKETS, market_event_id)
+
+        if not market:
+            logger.error(f"Market {market_event_id} not found in Firestore")
+            raise ValueError(f"Market {market_event_id} not found")
+
+        title = market.get("title", "Unknown")
+        description = market.get("description", "")
         
-        # --- Check Cache (4 hours) ---
+        if not market_context:
+            market_context = {
+                "current_price": float(market.get("current_price", 0)),
+                "implied_probability": float(market.get("implied_probability", 0)),
+                "volume_24h": float(market.get("volume_24h", 0)),
+            }
+            
+        current_implied_pct = market_context["implied_probability"] * 100
+        
+        # --- 2. Check Cache (4 hours) ---
         latest_ai = fs.query(
             Collection.AI_ANALYSES,
             filters=[("market_id", "==", market_event_id)],
@@ -61,42 +83,29 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
                         
                     age = now - analyzed_at
                     if age.total_seconds() < 4 * 3600:  # 4 hours
-                        logger.info(f"Using cached AI analysis for {market_event_id} (age: {age.total_seconds()/60:.1f} mins)")
+                        cached_prob = cached.get("probability", 50)
+                        edge = abs(cached_prob - current_implied_pct)
                         
-                        # Add a 5-second delay so the frontend "analyzing" state doesn't disappear too quickly
-                        import time
-                        time.sleep(5)
-                        
-                        return {
-                            "probability": cached.get("probability", 50),
-                            "confidence": cached.get("confidence", 0),
-                            "reasoning": cached.get("reasoning", ""),
-                            "sources_consulted": cached.get("sources", ""),
-                            "firestore_doc_id": cached.get("id"),
-                            "market_event_id": market_event_id,
-                            "model_used": cached.get("model_used", "cached"),
-                        }
+                        if edge >= 5:
+                            logger.info(f"Using cached AI analysis for {market_event_id} (age: {age.total_seconds()/60:.1f} mins) because edge is {edge:.1f}% (>= 5%)")
+                            
+                            # Add a 5-second delay so the frontend "analyzing" state doesn't disappear too quickly
+                            import time
+                            time.sleep(5)
+                            
+                            return {
+                                "probability": cached_prob,
+                                "confidence": cached.get("confidence", 0),
+                                "reasoning": cached.get("reasoning", ""),
+                                "sources_consulted": cached.get("sources", ""),
+                                "firestore_doc_id": cached.get("id"),
+                                "market_event_id": market_event_id,
+                                "model_used": cached.get("model_used", "cached"),
+                            }
+                        else:
+                            logger.info(f"Discarding cached AI analysis for {market_event_id} because edge is only {edge:.1f}% (< 5%). Re-running analysis.")
 
-        # --- Read market from Firestore ---
-        if market_context:
-            market = market_context
-        else:
-            market = fs.get(Collection.MARKETS, market_event_id)
-
-        if not market:
-            logger.error(f"Market {market_event_id} not found in Firestore")
-            raise ValueError(f"Market {market_event_id} not found")
-
-        title = market.get("title", "Unknown")
-        description = market.get("description", "")
         logger.info(f"Estimating probability for: {title}")
-
-        if not market_context:
-            market_context = {
-                "current_price": float(market.get("current_price", 0)),
-                "implied_probability": float(market.get("implied_probability", 0)),
-                "volume_24h": float(market.get("volume_24h", 0)),
-            }
 
         # Call Gemini - this now returns the actual model used in result['model_used']
         result = gemini_client.estimate_probability(
