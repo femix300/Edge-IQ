@@ -25,10 +25,10 @@ class AIAnalysisSchema(BaseModel):
     sources_consulted: str
 
 AVAILABLE_MODELS = [
-    # Proven 2.x models
-    'gemini-2.5-flash',
-    'gemini-2.5-pro',
-    'gemini-2.5-flash-lite',
+    # Proven 2.x models (2.5 series currently returning 404)
+    # 'gemini-2.5-flash',
+    # 'gemini-2.5-pro',
+    # 'gemini-2.5-flash-lite',
     'gemini-2.0-flash',
     'gemini-2.0-flash-lite',
     'gemini-flash-latest',
