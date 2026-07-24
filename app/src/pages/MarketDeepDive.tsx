@@ -715,14 +715,14 @@ const MarketDeepDive = () => {
       )}
 
       {/* Edge Signal */}
-      {signal && signal.edge_score > 5 && (
+      {signal && Math.abs(signal.edge_score) >= 5 && (
         <div className="bg-[#131a2b] rounded-xl border border-[#00ff88]/30 p-6 shadow-[0_0_30px_rgba(0,255,136,0.05)]">
           <div className="flex items-center gap-2 mb-4">
             <Zap className="w-5 h-5 text-[#00ff88]" />
             <h3 className="text-lg font-bold text-[#00ff88]">Edge Signal Detected</h3>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <StatBlock label="Edge Score" value={`${signal.edge_score > 0 ? "+" : ""}${Number(signal.edge_score).toFixed(1)}%`} color={signal.edge_score >= 20 ? "text-[#00ff88]" : signal.edge_score >= 10 ? "text-[#ffa502]" : "text-[#ff4757]"} tooltip={TOOLTIPS.edge} />
+            <StatBlock label="Edge Score" value={`${signal.edge_score > 0 ? "+" : ""}${Number(signal.edge_score).toFixed(1)}%`} color={Math.abs(signal.edge_score) >= 20 ? "text-[#00ff88]" : Math.abs(signal.edge_score) >= 10 ? "text-[#ffa502]" : "text-[#ff4757]"} tooltip={TOOLTIPS.edge} />
             <StatBlock label="Expected Value" value={`₦${Number(signal.expected_value).toFixed(2)}`} color={signal.expected_value > 0 ? "text-[#00ff88]" : "text-[#ff4757]"} tooltip={TOOLTIPS.ev} />
             <StatBlock label="Kelly %" value={`${Number(signal.kelly_percentage).toFixed(1)}%`} color="text-[#00d4ff]" tooltip={TOOLTIPS.kelly} />
             <StatBlock label="Direction" value={signal.direction} color={signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ff4757]" : "text-[#ffa502]"} />
