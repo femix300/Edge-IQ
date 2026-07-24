@@ -48,18 +48,16 @@ def async_analyze_market(market_id, user_bankroll=10000):
     from agents.quant_analyzer import analyze_market
     from agents.ai_probability import estimate_probability
     from agents.signal_generator import generate_signal
-    from services.gemini_client import gemini_client
     
     logger.info(f"Starting background analysis for market {market_id}...")
     
     try:
-        gemini_client.check_model_quotas()
-        
         quant_metrics = analyze_market(market_id)
         ai_result = estimate_probability(market_id)
         result = generate_signal(market_event_id=market_id, user_bankroll=user_bankroll)
         
-        gemini_client.check_model_quotas()
+        # Trigger quota check in background (non-blocking) after a pipeline run
+        async_check_quotas.delay()
         
         cache_key = f"analysis_result_{market_id}"
         cache.set(cache_key, result, 3600)
@@ -92,3 +90,19 @@ def periodic_market_scan():
     except Exception as e:
         logger.error(f"Periodic scan failed: {str(e)}")
         return {'markets_found': 0, 'error': str(e)}
+
+@shared_task
+def async_check_quotas():
+    """
+    Runs the quota checker concurrently in the background.
+    """
+    from services.gemini_client import gemini_client
+    
+    logger.info("Starting background quota check...")
+    try:
+        result = gemini_client.check_model_quotas()
+        logger.info("Background quota check completed successfully.")
+        return {'status': 'success', 'models': result}
+    except Exception as e:
+        logger.error(f"Background quota check failed: {str(e)}")
+        return {'status': 'error', 'error': str(e)}

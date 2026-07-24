@@ -222,9 +222,6 @@ class MarketViewSet(viewsets.GenericViewSet):
             # Sync latest market data
             market["id"] = market.get("bayse_event_id", pk)
             fs.set(Collection.MARKETS, pk, market, merge=True)
-            
-            # 0. Check API Quotas and push best available to top before starting
-            gemini_client.check_model_quotas()
 
             # Agent 02: Quant
             quant_metrics = analyze_market(pk)
@@ -243,8 +240,9 @@ class MarketViewSet(viewsets.GenericViewSet):
                 limit=1,
             )
             
-            # Check API Quotas again after pipeline to ensure robustness for next request
-            gemini_client.check_model_quotas()
+            # Check API Quotas concurrently in the background after pipeline to ensure robustness for next request
+            from markets.tasks import async_check_quotas
+            async_check_quotas.delay()
 
             return Response({
                 "success": True,
@@ -256,9 +254,18 @@ class MarketViewSet(viewsets.GenericViewSet):
             })
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
-            import traceback
-            traceback.print_exc()
             return Response({"success": False, "error": str(e)}, status=500)
+
+    # ── check_quotas ──────────────────────────────────────────────────
+    @action(detail=False, methods=['post', 'get'])
+    def check_quotas(self, request):
+        """POST/GET /api/markets/check_quotas/ — triggers background quota checking"""
+        from markets.tasks import async_check_quotas
+        async_check_quotas.delay()
+        return Response({
+            "success": True,
+            "message": "Background quota check started."
+        })
 
     # ── top ───────────────────────────────────────────────────────────
     @action(detail=False, methods=['get'])
