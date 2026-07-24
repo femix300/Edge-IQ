@@ -73,6 +73,7 @@ def scan_markets(max_results=50) -> list:
             try:
                 # Parse closes_at for signal score calculation
                 closes_at = parse_timestamp(market.get('closes_at'))
+                resolved_at = None
 
                 # Calculate signal potential score (reuse same formula as Bayse scanner)
                 signal_score = calculate_signal_potential(
@@ -82,7 +83,7 @@ def scan_markets(max_results=50) -> list:
                 )
 
                 # Stamp timestamps, status, and score
-                if closes_at and closes_at < timezone.now():
+                if (closes_at and closes_at < timezone.now()) or (resolved_at and resolved_at < timezone.now()):
                     market['status'] = 'closed'
 
                 market['signal_potential_score'] = signal_score
