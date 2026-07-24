@@ -114,7 +114,8 @@ def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
                         "bayse_market_id": str(m_data.get('id', '')),
                         "title": str(m_data.get('title', m_data.get('outcomeLabel', f"Outcome {len(outcomes)+1}"))),
                         "current_price": float(m_price),
-                        "implied_probability": m_prob
+                        "implied_probability": m_prob,
+                        "description": str(m_data.get('description') or event.get('description', ''))
                     })
 
                 # Fallback to root-level for backwards compatibility

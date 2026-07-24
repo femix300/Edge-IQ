@@ -340,7 +340,8 @@ class PolymarketClient:
                         "bayse_market_id": norm_child['bayse_market_id'],
                         "title": child.get('groupItemTitle') or norm_child['title'],
                         "current_price": norm_child['current_price'],
-                        "implied_probability": norm_child['implied_probability']
+                        "implied_probability": norm_child['implied_probability'],
+                        "description": child.get('description') or event.get('description') or norm_child.get('description', '')
                     })
                 except Exception as e:
                     logger.warning(f"Failed to normalize child market: {e}")

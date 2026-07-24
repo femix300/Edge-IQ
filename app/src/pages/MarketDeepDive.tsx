@@ -208,13 +208,13 @@ const StaticMarketView = ({ market, onDeepDive, selectedOutcome, setSelectedOutc
       </div>
 
       {/* Description */}
-      {market.description && (
+      {(selectedOutcome?.description || market.description) && (
         <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-5">
           <h3 className="text-sm font-semibold text-[#dee2f5] mb-3 flex items-center gap-2">
             <FileText className="w-4 h-4 text-[#00d4ff]" />
             About this Market
           </h3>
-          <p className="text-sm text-[#8b92a8] leading-relaxed">{market.description}</p>
+          <p className="text-sm text-[#8b92a8] leading-relaxed">{selectedOutcome?.description || market.description}</p>
         </div>
       )}
 
