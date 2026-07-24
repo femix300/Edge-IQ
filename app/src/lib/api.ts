@@ -26,7 +26,12 @@ const API_BASE = import.meta.env.VITE_API_URL || "https://edge-iq.onrender.com/a
 // Recursively convert string numbers to actual numbers in API responses
 function parseNumbers(obj: any): any {
   if (obj === null || obj === undefined) return obj;
-  if (typeof obj === "string" && /^-?\d+(\.\d+)?$/.test(obj)) return Number(obj);
+  if (typeof obj === "string" && /^-?\d+(\.\d+)?$/.test(obj)) {
+    // Do not parse extremely large numeric strings (e.g. Polymarket token IDs)
+    // to prevent precision loss (scientific notation) and method crashes (e.g. .slice is not a function)
+    if (obj.length > 15) return obj;
+    return Number(obj);
+  }
   if (Array.isArray(obj)) return obj.map(parseNumbers);
   if (typeof obj === "object" && !(obj instanceof Date)) {
     const result: Record<string, any> = {};

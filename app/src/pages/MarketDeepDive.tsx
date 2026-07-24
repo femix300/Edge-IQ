@@ -130,7 +130,9 @@ const StaticMarketView = ({ market, onDeepDive, selectedOutcome, setSelectedOutc
     : market.liquidity > 10000 ? { label: "Moderate", color: "text-[#ffa502]" }
     : { label: "Thin", color: "text-[#ff4757]" };
 
-  const isMulti = market.is_multi_dimensional && !selectedOutcome;
+  // Derive multi-dimensional from BOTH the Firestore flag AND outcomes count
+  // (the flag may be stale in existing Firestore docs)
+  const isMulti = (market.is_multi_dimensional || (market.outcomes?.length > 1)) && !selectedOutcome;
 
   return (
     <div className="space-y-5">
@@ -675,7 +677,7 @@ const MarketDeepDive = () => {
                 </span>
               )}
               <span className="text-xs text-[#8b92a8] font-mono-num">
-                ID: {selectedOutcome ? selectedOutcome.bayse_market_id?.slice(0, 12) : market?.bayse_event_id?.slice(0, 12)}...
+                ID: {selectedOutcome ? String(selectedOutcome.bayse_market_id || '').slice(0, 12) : String(market?.bayse_event_id || '').slice(0, 12)}...
               </span>
             </div>
             <h1 className="text-xl md:text-2xl font-bold text-[#dee2f5]">
@@ -818,7 +820,7 @@ const MarketDeepDive = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               <StatBlock label="Edge Score" value={`+${Number(Math.abs(signal.edge_score)).toFixed(1)}%`} color={pColorClass} tooltip={TOOLTIPS.edge} />
               <StatBlock label="Expected Value" value={`₦${Number(signal.expected_value).toFixed(2)}`} color={signal.expected_value > 0 ? "text-[#00ff88]" : "text-[#ff4757]"} tooltip={TOOLTIPS.ev} />
-              <StatBlock label="Kelly %" value={`${(signal.kelly_percentage || 0).toFixed(1)}%`} color="text-[#00d4ff]" tooltip={TOOLTIPS.kelly} />
+              <StatBlock label="Kelly %" value={`${Number(signal.kelly_percentage || 0).toFixed(1)}%`} color="text-[#00d4ff]" tooltip={TOOLTIPS.kelly} />
               <StatBlock label="Direction" value={signal.direction === "BUY" ? "BUY YES" : signal.direction === "SELL" ? "BUY NO" : signal.direction || "WAIT"} color={pColorClass} />
           </div>
           <div className="mb-4">
