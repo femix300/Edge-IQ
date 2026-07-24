@@ -136,6 +136,14 @@ def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
 
                 signal_score = calculate_signal_potential(total_volume, liquidity, closes_at)
 
+                computed_status = "closed" if ((closes_at and closes_at < timezone.now()) or (resolved_at and resolved_at < timezone.now())) else (status or event.get('status', 'open'))
+
+                # Skip markets that have already closed — avoid writing stale 'open' docs
+                if computed_status == "closed":
+                    skipped += 1
+                    logger.debug(f"  [SKIP - CLOSED] {title[:60]}")
+                    continue
+
                 # --- Create market document (don't write to Firestore yet) ---
                 market_doc = {
                     "bayse_event_id": event_id,
@@ -150,7 +158,7 @@ def scan_markets(status='open', min_volume=0, min_liquidity=0, max_results=20):
                     "volume_24h": 0,
                     "total_volume": float(total_volume),
                     "liquidity": float(liquidity),
-                    "status": "closed" if ((closes_at and closes_at < timezone.now()) or (resolved_at and resolved_at < timezone.now())) else (status or event.get('status', 'open')),
+                    "status": computed_status,
                     "opens_at": opens_at.isoformat() if opens_at else None,
                     "closes_at": closes_at.isoformat() if closes_at else None,
                     "resolved_at": resolved_at.isoformat() if resolved_at else None,

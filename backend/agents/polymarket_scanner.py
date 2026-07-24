@@ -82,9 +82,12 @@ def scan_markets(max_results=50) -> list:
                     closes_at=closes_at,
                 )
 
-                # Stamp timestamps, status, and score
-                if (closes_at and closes_at < timezone.now()) or (resolved_at and resolved_at < timezone.now()):
+                # Skip markets that have already closed — don't write stale open docs
+                if closes_at and closes_at < timezone.now():
                     market['status'] = 'closed'
+                    skipped += 1
+                    logger.debug(f"  [SKIP - CLOSED] {market.get('title', 'Untitled')[:60]}")
+                    continue
 
                 market['signal_potential_score'] = signal_score
                 market['last_scanned_at'] = timezone.now().isoformat()

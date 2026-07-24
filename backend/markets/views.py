@@ -106,6 +106,9 @@ class MarketViewSet(viewsets.GenericViewSet):
         # Merge, deduplicate by doc id
         seen = set()
         markets = []
+        stale_ids = []  # Markets whose closes_at is in the past but still marked open
+        now = timezone.now()
+
         for m in bayse_markets + poly_markets:
             doc_id = m.get("bayse_event_id") or m.get("id", "")
             if doc_id and doc_id not in seen:
@@ -114,7 +117,37 @@ class MarketViewSet(viewsets.GenericViewSet):
                 m["time_remaining_hours"] = m.get("time_remaining") or m.get("time_remaining_hours") or 0
                 if not m.get("source"):
                     m["source"] = "bayse"
+
+                # --- Staleness guard ---
+                # Skip markets whose closes_at is in the past (stale Firestore docs)
+                closes_at_raw = m.get("closes_at")
+                if closes_at_raw:
+                    try:
+                        from dateutil import parser as dp
+                        closes_dt = dp.parse(closes_at_raw) if isinstance(closes_at_raw, str) else None
+                        if closes_dt:
+                            import datetime
+                            if closes_dt.tzinfo is None:
+                                closes_dt = closes_dt.replace(tzinfo=datetime.timezone.utc)
+                            if closes_dt < now:
+                                stale_ids.append(doc_id)
+                                continue  # Skip — market has already closed
+                    except Exception:
+                        pass  # If we can't parse the date, let it through
+
                 markets.append(m)
+
+        # Async background: mark stale docs as closed in Firestore so future queries skip them
+        if stale_ids:
+            logger.info(f"Suppressing {len(stale_ids)} stale markets from results; marking closed in Firestore")
+            import threading
+            def _mark_closed():
+                for sid in stale_ids:
+                    try:
+                        fs.set(Collection.MARKETS, sid, {"status": "closed"}, merge=True)
+                    except Exception:
+                        pass
+            threading.Thread(target=_mark_closed, daemon=True).start()
 
         # Sort merged list by signal_potential_score descending
         markets.sort(key=safe_score, reverse=True)
