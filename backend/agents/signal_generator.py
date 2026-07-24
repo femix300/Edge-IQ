@@ -94,10 +94,19 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
 
     # Kelly Criterion: f* = (bp - q) / b
     bankroll = Decimal(str(user_bankroll))
-    if current_price > 0 and current_price != Decimal('0') and edge != 0:
-        b = (1 / current_price) - 1
-        p = ai_prob / 100
-        q = 1 - p
+    if current_price > 0 and current_price < 1 and edge != 0:
+        if edge > 0:
+            # Betting YES
+            b = (1 / current_price) - 1
+            p = ai_prob / 100
+        else:
+            # Betting NO
+            price_no = Decimal("1") - current_price
+            b = (1 / price_no) - 1
+            p = Decimal("1") - (ai_prob / 100)
+            
+        q = Decimal("1") - p
+        
         kelly_f = (b * p - q) / b if b != 0 else Decimal("0")
         kelly_f = max(Decimal("0"), min(Decimal("1"), kelly_f))
         kelly_pct = kelly_f * 100
