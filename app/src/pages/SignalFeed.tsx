@@ -29,7 +29,7 @@ const TOASTS: Record<string, string> = {
 
 const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => void }) => {
   const edge = signal.edge_score;
-  const edgeColor = edge >= 20 ? "text-[#00ff88]" : edge >= 10 ? "text-[#ffa502]" : "text-[#ff4757]";
+  const edgeColor = Math.abs(edge) >= 20 ? "text-[#00ff88]" : Math.abs(edge) >= 10 ? "text-[#ffa502]" : "text-[#ff4757]";
   const label = signal.direction || "WAIT";
   const labelColor = signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ffa502]" : "text-[#8b92a8]";
   const dotColor = signal.direction === "BUY" ? "bg-[#00ff88]" : signal.direction === "SELL" ? "bg-[#ffa502]" : "bg-[#8b92a8]";
@@ -167,9 +167,10 @@ const SignalFeed = () => {
           signals = signals.filter((s) => (s.category || "other").toLowerCase() === categoryFilter.toLowerCase());
         }
         setActiveSignals(signals);
-        const highEdge = signals.find((s) => s.edge_score > 20);
+        const highEdge = signals.find((s) => Math.abs(s.edge_score) >= 20);
         if (highEdge) {
-          setToast({ message: `High-edge signal: ${highEdge.market_title.slice(0, 30)}... (+${Number(highEdge.edge_score).toFixed(0)}%)`, type: "success" });
+          const sign = highEdge.edge_score > 0 ? "+" : "";
+          setToast({ message: `High-edge signal: ${highEdge.market_title.slice(0, 30)}... (${sign}${Number(highEdge.edge_score).toFixed(0)}%)`, type: "success" });
           setTimeout(() => setToast(null), 5000);
         }
       }
