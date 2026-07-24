@@ -32,6 +32,46 @@ def estimate_probability(market_event_id: str, market_context: dict | None = Non
         Dict with probability, confidence, reasoning + firestore_doc_id
     """
     try:
+        from django.utils import timezone
+        import datetime
+        
+        now = timezone.now()
+        
+        # --- Check Cache (4 hours) ---
+        latest_ai = fs.query(
+            Collection.AI_ANALYSES,
+            filters=[("market_id", "==", market_event_id)],
+            order_by=("analyzed_at", True),
+            limit=1,
+        )
+        if latest_ai:
+            cached = latest_ai[0]
+            analyzed_at = cached.get("analyzed_at")
+            if analyzed_at:
+                if isinstance(analyzed_at, str):
+                    from dateutil import parser
+                    try:
+                        analyzed_at = parser.parse(analyzed_at)
+                    except Exception:
+                        pass
+                
+                if isinstance(analyzed_at, datetime.datetime):
+                    if timezone.is_naive(analyzed_at):
+                        analyzed_at = timezone.make_aware(analyzed_at)
+                        
+                    age = now - analyzed_at
+                    if age.total_seconds() < 4 * 3600:  # 4 hours
+                        logger.info(f"Using cached AI analysis for {market_event_id} (age: {age.total_seconds()/60:.1f} mins)")
+                        return {
+                            "probability": cached.get("probability", 50),
+                            "confidence": cached.get("confidence", 0),
+                            "reasoning": cached.get("reasoning", ""),
+                            "sources_consulted": cached.get("sources", ""),
+                            "firestore_doc_id": cached.get("id"),
+                            "market_event_id": market_event_id,
+                            "model_used": cached.get("model_used", "cached"),
+                        }
+
         # --- Read market from Firestore ---
         if market_context:
             market = market_context
