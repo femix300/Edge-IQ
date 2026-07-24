@@ -224,20 +224,40 @@ def get_active_signals(limit=20, min_edge=15, user_id: str = None) -> list[dict]
     """
     Get active signals from Firestore (replaces ORM query).
     """
+    # Fetch all active signals for the user
     filters = [("is_active", "==", True)]
     if user_id:
         filters.append(("user_id", "==", user_id))
-    
-    # We use abs_edge_score so that large negative edges (SELL signals) are caught
-    if min_edge:
-        filters.append(("abs_edge_score", ">=", min_edge))
 
-    return fs.query(
+    # Do not use order_by or additional filters in fs.query to avoid missing composite index errors
+    raw_signals = fs.query(
         collection=Collection.SIGNALS,
         filters=filters,
-        order_by=("abs_edge_score", True),
-        limit=limit,
+        limit=500, # fetch a safe maximum
     )
+    
+    # Filter and sort in memory
+    filtered_signals = []
+    for sig in raw_signals:
+        # Fallback to abs(edge_score) if abs_edge_score is missing from older docs
+        abs_edge = sig.get("abs_edge_score")
+        if abs_edge is None:
+            raw_edge = sig.get("edge_score", 0)
+            abs_edge = abs(float(raw_edge))
+            
+        if min_edge and abs_edge < min_edge:
+            continue
+            
+        sig["_sort_key"] = abs_edge
+        filtered_signals.append(sig)
+        
+    filtered_signals.sort(key=lambda x: x["_sort_key"], reverse=True)
+    
+    # Cleanup temporary sort key and apply limit
+    for sig in filtered_signals:
+        del sig["_sort_key"]
+        
+    return filtered_signals[:limit]
 
 
 def deactivate_expired_signals() -> int:
