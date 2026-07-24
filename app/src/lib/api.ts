@@ -402,3 +402,8 @@ export async function clearAllSignalsDb(): Promise<{ success: boolean; deleted_c
 export async function unresolvePredictions(): Promise<any> {
   return fetchJSON(`${API_BASE}/predictions/unresolve-all/`, { method: "POST" });
 }
+
+// Background Quota Check
+export async function checkModelQuotas(): Promise<{ success: boolean; message: string }> {
+  return fetchJSON(`${API_BASE}/markets/check_quotas/`, { method: "GET" });
+}

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Suspense, lazy, useEffect } from "react";
 import { useAuthStore } from "./stores";
 import { initAuthListener } from "./lib/firebase";
+import { checkModelQuotas } from "./lib/api";
 import DashboardLayout from "./components/DashboardLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LoadingScreen from "./components/LoadingScreen";
@@ -32,6 +33,9 @@ function App() {
           email: firebaseUser.email || "",
           displayName: firebaseUser.displayName || "",
         });
+        
+        // Quietly warm up the AI model quotas in the background
+        checkModelQuotas().catch(err => console.warn("Failed to check model quotas in background:", err));
       } else {
         setAuthenticated(false);
         setUser(null);
