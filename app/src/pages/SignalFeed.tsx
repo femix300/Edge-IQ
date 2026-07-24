@@ -63,7 +63,7 @@ const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => v
             {signal.outcome_title ? `${signal.market_title} - ${signal.outcome_title}` : signal.market_title}
           </h3>
           <div className="flex items-center gap-2 text-xs text-[#8b92a8]">
-            <span className="font-mono-num">ID: {signal.outcome_id ? signal.outcome_id?.slice(0,8) : signal.market_event_id?.slice(0, 8)}</span>
+            <span className="font-mono-num">ID: {signal.outcome_id ? String(signal.outcome_id).slice(0,8) : String(signal.market_event_id || '').slice(0, 8)}</span>
           </div>
         </div>
         <div className="flex items-center gap-2 ml-3">
@@ -170,7 +170,7 @@ const SignalFeed = () => {
         const highEdge = signals.find((s) => Math.abs(s.edge_score) >= 20);
         if (highEdge) {
           const sign = highEdge.edge_score > 0 ? "+" : "";
-          setToast({ message: `High-edge signal: ${highEdge.market_title.slice(0, 30)}... (${sign}${Number(highEdge.edge_score).toFixed(0)}%)`, type: "success" });
+          setToast({ message: `High-edge signal: ${String(highEdge.market_title || '').slice(0, 30)}... (${sign}${Number(highEdge.edge_score).toFixed(0)}%)`, type: "success" });
           setTimeout(() => setToast(null), 5000);
         }
       }
