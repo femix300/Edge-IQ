@@ -30,7 +30,7 @@ const TOASTS: Record<string, string> = {
 const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => void }) => {
   const edge = signal.edge_score;
   const edgeColor = Math.abs(edge) >= 20 ? "text-[#00ff88]" : Math.abs(edge) >= 10 ? "text-[#ffa502]" : "text-[#ff4757]";
-  const label = signal.direction || "WAIT";
+  const label = signal.direction === "BUY" ? "BUY YES" : signal.direction === "SELL" ? "BUY NO" : signal.direction || "WAIT";
   const labelColor = signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ffa502]" : "text-[#8b92a8]";
   const dotColor = signal.direction === "BUY" ? "bg-[#00ff88]" : signal.direction === "SELL" ? "bg-[#ffa502]" : "bg-[#8b92a8]";
   const category = (signal.category || "other") as keyof typeof CATEGORY_COLORS;
@@ -76,7 +76,7 @@ const SignalCard = memo(({ signal, onClick }: { signal: Signal; onClick: () => v
         <div className="bg-[#0a0e17] rounded-lg p-3" data-tooltip={TOASTS.edge}>
           <p className="text-[10px] uppercase text-[#8b92a8] mb-1">Edge</p>
           <p className={`text-lg font-bold font-mono-num ${edgeColor}`}>
-            {edge > 0 ? "+" : ""}{edge.toFixed(1)}%
+            +{Math.abs(edge).toFixed(1)}%
           </p>
         </div>
         <div className="bg-[#0a0e17] rounded-lg p-3" data-tooltip={TOASTS.ev}>

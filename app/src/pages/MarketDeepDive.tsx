@@ -715,17 +715,23 @@ const MarketDeepDive = () => {
       )}
 
       {/* Edge Signal */}
-      {signal && Math.abs(signal.edge_score) >= 5 && (
-        <div className="bg-[#131a2b] rounded-xl border border-[#00ff88]/30 p-6 shadow-[0_0_30px_rgba(0,255,136,0.05)]">
-          <div className="flex items-center gap-2 mb-4">
-            <Zap className="w-5 h-5 text-[#00ff88]" />
-            <h3 className="text-lg font-bold text-[#00ff88]">Edge Signal Detected</h3>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <StatBlock label="Edge Score" value={`${signal.edge_score > 0 ? "+" : ""}${Number(signal.edge_score).toFixed(1)}%`} color={Math.abs(signal.edge_score) >= 20 ? "text-[#00ff88]" : Math.abs(signal.edge_score) >= 10 ? "text-[#ffa502]" : "text-[#ff4757]"} tooltip={TOOLTIPS.edge} />
-            <StatBlock label="Expected Value" value={`₦${Number(signal.expected_value).toFixed(2)}`} color={signal.expected_value > 0 ? "text-[#00ff88]" : "text-[#ff4757]"} tooltip={TOOLTIPS.ev} />
-            <StatBlock label="Kelly %" value={`${(signal.kelly_percentage || 0).toFixed(1)}%`} color="text-[#00d4ff]" tooltip={TOOLTIPS.kelly} />
-            <StatBlock label="Direction" value={signal.direction} color={signal.direction === "BUY" ? "text-[#00ff88]" : signal.direction === "SELL" ? "text-[#ffa502]" : "text-[#8b92a8]"} />
+      {signal && Math.abs(signal.edge_score) >= 5 && (() => {
+        const isBuy = signal.direction === "BUY";
+        const pColorClass = isBuy ? "text-[#00ff88]" : "text-[#ffa502]";
+        const pBorderClass = isBuy ? "border-[#00ff88]/30" : "border-[#ffa502]/30";
+        const pShadowClass = isBuy ? "shadow-[0_0_30px_rgba(0,255,136,0.05)]" : "shadow-[0_0_30px_rgba(255,165,2,0.05)]";
+        
+        return (
+          <div className={`bg-[#131a2b] rounded-xl border ${pBorderClass} p-6 ${pShadowClass}`}>
+            <div className="flex items-center gap-2 mb-4">
+              <Zap className={`w-5 h-5 ${pColorClass}`} />
+              <h3 className={`text-lg font-bold ${pColorClass}`}>Edge Signal Detected</h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              <StatBlock label="Edge Score" value={`+${Number(Math.abs(signal.edge_score)).toFixed(1)}%`} color={pColorClass} tooltip={TOOLTIPS.edge} />
+              <StatBlock label="Expected Value" value={`₦${Number(signal.expected_value).toFixed(2)}`} color={signal.expected_value > 0 ? "text-[#00ff88]" : "text-[#ff4757]"} tooltip={TOOLTIPS.ev} />
+              <StatBlock label="Kelly %" value={`${(signal.kelly_percentage || 0).toFixed(1)}%`} color="text-[#00d4ff]" tooltip={TOOLTIPS.kelly} />
+              <StatBlock label="Direction" value={signal.direction === "BUY" ? "BUY YES" : signal.direction === "SELL" ? "BUY NO" : signal.direction || "WAIT"} color={pColorClass} />
           </div>
           <div className="mb-4">
             <p className="text-xs text-[#8b92a8] mb-2">Risk Tolerance</p>
@@ -751,7 +757,8 @@ const MarketDeepDive = () => {
             </button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Quant Metrics */}
       {quantMetrics && (
