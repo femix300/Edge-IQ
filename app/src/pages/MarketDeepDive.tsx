@@ -525,6 +525,11 @@ const MarketDeepDive = () => {
             if (cachedQuant) setLocalQuantMetrics(JSON.parse(cachedQuant));
           }
           if (!selectedMarket && cachedMarket) setSelectedMarket(JSON.parse(cachedMarket));
+          // Restore selectedOutcome for child dimension signals
+          const cachedOutcome = sessionStorage.getItem("cachedOutcome");
+          if (cachedOutcome) {
+            try { setSelectedOutcome(JSON.parse(cachedOutcome)); } catch { /* ignore */ }
+          }
         } catch { /* ignore */ }
         setLoading(false);
         sessionStorage.removeItem("fromSignal");
@@ -555,6 +560,15 @@ const MarketDeepDive = () => {
         setLocalAiAnalysis(result.ai_analysis);
         setQuantMetrics(result.quant_metrics);
         setAiAnalysis(result.ai_analysis);
+        // Persist results to sessionStorage so navigating back from signals restores full analysis
+        if (result.signal) sessionStorage.setItem("cachedSignal", JSON.stringify(result.signal));
+        if (result.ai_analysis) sessionStorage.setItem("cachedAiAnalysis", JSON.stringify(result.ai_analysis));
+        if (result.quant_metrics) sessionStorage.setItem("cachedQuantMetrics", JSON.stringify(result.quant_metrics));
+        if (result.market) sessionStorage.setItem("cachedMarket", JSON.stringify(result.market));
+        if (selectedOutcome) sessionStorage.setItem("cachedOutcome", JSON.stringify(selectedOutcome));
+        else sessionStorage.removeItem("cachedOutcome");
+        sessionStorage.setItem("cachedMarketId", id || "");
+        sessionStorage.setItem("fromSignal", "true");
 
         try {
           setPriceLoading(true);

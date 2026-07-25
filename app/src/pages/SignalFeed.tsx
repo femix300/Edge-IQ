@@ -245,6 +245,19 @@ const SignalFeed = () => {
     }));
     sessionStorage.setItem("cachedMarketId", marketId);
     sessionStorage.setItem("fromSignal", "true");
+
+    // For child dimension signals, cache the specific outcome so MarketDeepDive can pre-select it
+    if (signal.outcome_id && signal.outcome_title) {
+      sessionStorage.setItem("cachedOutcome", JSON.stringify({
+        bayse_market_id: signal.outcome_id,
+        title: signal.outcome_title,
+        current_price: signal.market_probability / 100,
+        implied_probability: signal.market_probability,
+      }));
+    } else {
+      sessionStorage.removeItem("cachedOutcome");
+    }
+
     navigate(`/market/${marketId}`);
   };
 
