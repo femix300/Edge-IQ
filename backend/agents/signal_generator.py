@@ -21,7 +21,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankroll: float = 10000, outcome_id: str = None, outcome_title: str = None) -> dict:
+def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankroll: float = 10000, outcome_id: str = None, outcome_title: str = None, ai_data: dict = None) -> dict:
     """
     Generate a complete trading signal for a market.
 
@@ -34,8 +34,11 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
 
     Args:
         market_event_id: Firestore doc ID of the market
+        user_id: User identifier
+        user_bankroll: Base bankroll for Kelly
         outcome_id: Optional bayse_market_id for multi-dimensional events
         outcome_title: Optional title of the specific outcome
+        ai_data: Optional pre-fetched AI analysis dict (avoids Firestore query)
 
     Returns:
         Signal dict (the Firestore document).
@@ -51,18 +54,21 @@ def generate_signal(market_event_id: str, user_id: str = "anonymous", user_bankr
     quant_doc_id = f"{market_event_id}_{outcome_id}" if outcome_id else market_event_id
     quant = fs.get(Collection.QUANT_METRICS, quant_doc_id) or {}
 
-    # 3. Fetch AI analysis (using original field names)
-    ai_filters = [("market_id", "==", market_event_id)]
-    if outcome_title:
-        ai_filters.append(("outcome_title", "==", outcome_title))
-        
-    ai_results = fs.query(
-        Collection.AI_ANALYSES,
-        filters=ai_filters,
-        order_by=("analyzed_at", True),
-        limit=1,
-    )
-    ai = ai_results[0] if ai_results else {}
+    # 3. Use provided AI analysis or fetch from Firestore
+    if ai_data:
+        ai = ai_data
+    else:
+        ai_filters = [("market_id", "==", market_event_id)]
+        if outcome_title:
+            ai_filters.append(("outcome_title", "==", outcome_title))
+            
+        ai_results = fs.query(
+            Collection.AI_ANALYSES,
+            filters=ai_filters,
+            order_by=("analyzed_at", True),
+            limit=1,
+        )
+        ai = ai_results[0] if ai_results else {}
 
     # After getting ai, add this line:
     model_used = ai.get("model_used", "unknown")

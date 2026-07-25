@@ -67,17 +67,8 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000, ou
         yield f"data: {json.dumps({'type': 'progress', 'step': 'ai_complete', 'agent': 3, 'total': 4, 'message': 'AI probability estimation complete'})}\n\n"
 
         # Agent 04: Signal Generator
-        yield f"data: {json.dumps({'type': 'progress', 'step': 'signal', 'agent': 4, 'total': 4, 'message': 'Generating trade signals...'})}\n\n"
-        try:
-            logger.info(f"SSE generating signal for user_id={user_id}")
-            signal_doc = generate_signal(market_event_id=market_event_id, user_id=user_id, user_bankroll=user_bankroll, outcome_id=outcome_id, outcome_title=outcome_title)
-        except Exception as e:
-            logger.error(f"Signal generation failed: {e}")
-            signal_doc = None
-        yield f"data: {json.dumps({'type': 'progress', 'step': 'signal_complete', 'agent': 4, 'total': 4, 'message': 'Signal generation complete'})}\n\n"
-
-        # Fetch latest AI analysis
         # Fetch latest AI analysis (filtered by outcome if this is a sub-market analysis)
+        # We do this BEFORE signal generation to avoid duplicate queries and pass the resolved data directly.
         ai_filters = [("market_id", "==", market_event_id)]
         if outcome_title:
             ai_filters.append(("outcome_title", "==", outcome_title))
@@ -96,6 +87,25 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000, ou
                 order_by=("analyzed_at", True),
                 limit=1,
             )
+            
+        resolved_ai_data = latest_ai[0] if latest_ai else ai_result
+
+        # Agent 04: Signal Generator
+        yield f"data: {json.dumps({'type': 'progress', 'step': 'signal', 'agent': 4, 'total': 4, 'message': 'Generating trade signals...'})}\n\n"
+        try:
+            logger.info(f"SSE generating signal for user_id={user_id}")
+            signal_doc = generate_signal(
+                market_event_id=market_event_id, 
+                user_id=user_id, 
+                user_bankroll=user_bankroll, 
+                outcome_id=outcome_id, 
+                outcome_title=outcome_title,
+                ai_data=resolved_ai_data
+            )
+        except Exception as e:
+            logger.error(f"Signal generation failed: {e}")
+            signal_doc = None
+        yield f"data: {json.dumps({'type': 'progress', 'step': 'signal_complete', 'agent': 4, 'total': 4, 'message': 'Signal generation complete'})}\n\n"
 
         # Final result
         result = {
@@ -103,7 +113,7 @@ def analyze_stream(market_event_id, user_id="anonymous", user_bankroll=10000, ou
             "success": True,
             "market": market,
             "quant_metrics": quant_metrics,
-            "ai_analysis": latest_ai[0] if latest_ai else ai_result,
+            "ai_analysis": resolved_ai_data,
             "signal": signal_doc,
             "analyzed_at": timezone.now().isoformat(),
         }
