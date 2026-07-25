@@ -268,7 +268,6 @@ class GeminiClient:
         Act as a professional prediction market analyst.
         Event: {title}
         Description: {description}
-        Current Market Context: {json.dumps(context) if context else 'None'}
         
         Recent Live News Headlines:
         {news_context}
@@ -278,8 +277,11 @@ class GeminiClient:
         2. Key factors that will influence the outcome
         3. A reasoned estimation of the probability (0-100)
         4. Your confidence level in this estimation
+        
+        CRITICAL INSTRUCTION: You must derive your probability estimate INDEPENDENTLY based purely on the facts, news, and your analytical reasoning. DO NOT simply echo or anchor to the 'Market Implied Probability' provided below. Your goal is to find an 'edge' against the market, so your independent estimate SHOULD differ from the market probability if the facts suggest so. Do not let the market probability influence your own calculations.
         """
         if context:
+            prompt += f"\n\n--- FOR REFERENCE ONLY ---"
             prompt += f"\nCurrent Market Price: ₦{context.get('current_price', 'N/A')}"
             prompt += f"\nMarket Implied Probability: {context.get('implied_probability', 'N/A')}%"
             
