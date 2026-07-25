@@ -105,7 +105,8 @@ class MarketViewSet(viewsets.GenericViewSet):
 
         # Merge, deduplicate by doc id
         seen = set()
-        markets = []
+        processed_bayse = []
+        processed_poly = []
         stale_ids = []  # Markets whose closes_at is in the past but still marked open
         now = timezone.now()
 
@@ -135,7 +136,10 @@ class MarketViewSet(viewsets.GenericViewSet):
                     except Exception:
                         pass  # If we can't parse the date, let it through
 
-                markets.append(m)
+                if m["source"] == "polymarket":
+                    processed_poly.append(m)
+                else:
+                    processed_bayse.append(m)
 
         # Async background: mark stale docs as closed in Firestore so future queries skip them
         if stale_ids:
@@ -149,8 +153,16 @@ class MarketViewSet(viewsets.GenericViewSet):
                         pass
             threading.Thread(target=_mark_closed, daemon=True).start()
 
-        # Sort merged list by signal_potential_score descending
-        markets.sort(key=safe_score, reverse=True)
+        # Sort each source list individually by signal_potential_score descending
+        processed_bayse.sort(key=safe_score, reverse=True)
+        processed_poly.sort(key=safe_score, reverse=True)
+
+        # Interleave the results to provide a mixed feed
+        import itertools
+        markets = []
+        for b, p in itertools.zip_longest(processed_bayse, processed_poly):
+            if p: markets.append(p)  # Polymarket typically has higher volume, lead with it
+            if b: markets.append(b)
 
         # Paginate
         start = (page - 1) * page_size
