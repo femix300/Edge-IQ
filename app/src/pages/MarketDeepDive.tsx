@@ -215,6 +215,30 @@ const StaticMarketView = ({ market, onDeepDive, selectedOutcome, setSelectedOutc
         </div>
       ) : (
         <>
+          {/* YES / NO resolution indicator for binary markets */}
+          {(() => {
+            const singleOutcome = market.outcomes?.[0];
+            const outcomeTitle = singleOutcome?.title;
+            // Only show if outcome title is different from market title and is not generic
+            const isGeneric = !outcomeTitle || outcomeTitle === 'Yes' || outcomeTitle === 'No' || outcomeTitle === market.title;
+            if (isGeneric) return null;
+            return (
+              <div className="bg-[#0a1628] rounded-xl border border-[#00ff88]/20 p-4 flex items-center gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-[#00ff88]/10 flex items-center justify-center">
+                  <span className="text-[#00ff88] text-xs font-bold">YES</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] uppercase text-[#8b92a8] tracking-wider mb-0.5">This market resolves YES if</p>
+                  <p className="text-sm font-semibold text-[#dee2f5] leading-snug">{outcomeTitle}</p>
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  <p className="text-[10px] text-[#8b92a8] uppercase">YES price</p>
+                  <p className="font-mono-num text-[#00ff88] font-bold">₦{Number(singleOutcome.current_price || 0).toFixed(2)}</p>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Key Stats Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-[#131a2b] rounded-xl border border-[#1a2030] p-4 flex flex-col gap-1">
