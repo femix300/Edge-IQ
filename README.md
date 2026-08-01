@@ -7,14 +7,14 @@
 
 EdgeIQ is an AI-powered quantitative intelligence platform built for prediction market traders. It aggregates live market data, runs expected-value (EV) and calibration models, generates AI-driven trading signals via Gemini, and provides portfolio tracking and backtesting tools — all in one unified interface.
 
-## 🚀 Live Demo & API URLs
+## Live Demo & API URLs
 
 The application is deployed and live at the following URLs:
 
 - **Frontend Application**: [https://edge-iq-psi.vercel.app](https://edge-iq-psi.vercel.app)
 - **Backend API**: [https://edge-iq.onrender.com](https://edge-iq.onrender.com)
 
-## 📚 API Documentation
+## API Documentation
 
 The backend is fully self-documented using `drf-spectacular`. You can explore and test endpoints directly via the browser:
 
@@ -22,7 +22,7 @@ The backend is fully self-documented using `drf-spectacular`. You can explore an
 - **ReDoc** (Full reference): [https://edge-iq.onrender.com/api/docs/redoc/](https://edge-iq.onrender.com/api/docs/redoc/)
 - **OpenAPI Schema**: [https://edge-iq.onrender.com/api/schema/](https://edge-iq.onrender.com/api/schema/)
 
-## 🛠 Tech Stack
+## Tech Stack
 
 EdgeIQ is a full-stack application leveraging modern, scalable technologies:
 
@@ -47,7 +47,7 @@ EdgeIQ is a full-stack application leveraging modern, scalable technologies:
 - **Authentication**: Firebase Auth. The frontend handles OAuth/email flows, and the backend verifies JWT tokens securely using the Firebase Admin SDK.
 - **Database**: Firestore (NoSQL). A serverless persistence layer tailored for rapid document reads/writes, bypassing complex query limitations through clever backend memory sorting.
 
-## ⚙️ Getting Started (Local Development)
+## Getting Started (Local Development)
 
 To run EdgeIQ locally, you need to spin up both the backend API and the frontend React application.
 
@@ -111,18 +111,17 @@ npm run dev
 ```
 The app will be available at `http://localhost:5173`.
 
-## 🧠 What Problem It Solves
+## What Problem It Solves
 
 Prediction markets are noisy. Prices move fast, EV is hard to compute in real time, and most traders lack systematic tools to track edge, calibrate beliefs, and size positions. EdgeIQ cuts through the noise by scanning markets, running quant models on the backend, surfacing high-confidence signals generated with Gemini AI, and letting traders backtest strategies before they deploy capital.
 
-## 🎯 Who It's For
+## Who It's For
 
 - Prediction market traders who want data-driven signals, not gut feel.
 - Quant-oriented bettors who care about calibration, EV, and position sizing.
 - Teams building systematic strategies over event-derivative markets.
 
-## 🗂 Repository Layout
+## Repository Layout
 
 - [`app/`](./app/README.md) — React frontend source, build config, and deployment scripts.
 - [`backend/`](./backend/README.md) — Django backend, API routes, models, quant logic, and Celery tasks.
-- [`HANDOFF.md`](./HANDOFF.md) — Detailed technical notes on recent Gemini failover and caching architectural updates.
